@@ -1,0 +1,368 @@
+{
+  "anthropic": [
+    {
+      "name": "sicry_check_tor",
+      "description": "Verify Tor is running and confirm the machine is routing traffic through the Tor network. Call this before any dark web operations.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "sicry_renew_identity",
+      "description": "Rotate the Tor circuit to get a new exit node and new identity. Use this to avoid fingerprinting between investigation sessions.",
+      "input_schema": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "sicry_fetch",
+      "description": "Fetch any URL through Tor \u2014 works for both normal websites (clearnet via Tor exit node) and .onion hidden services. Returns the page title, full clean text, and all hyperlinks found on the page. Use this to read specific .onion pages the same way you'd use fetch_url() or browser_read_page() for normal websites.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL to fetch. Can be a normal http/https URL or a .onion address. Example: 'http://example.onion/page'"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "sicry_search",
+      "description": "Search the Tor network / dark web for the given query across up to 16 .onion search engines simultaneously (Ahmia, Tor66, Excavator, Torgle, and 12 more). Returns a deduplicated list of {title, url, engine} results. Use this the same way you'd call web_search() or brave_search() for the regular internet.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query \u2014 keywords or short phrase. Keep under 5 words for best results across onion search engines."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Maximum number of unique results to return. Default 20.",
+            "default": 20
+          },
+          "engines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, TorNet, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 18."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "sicry_ask",
+      "description": "Analyze and summarize dark web content using an LLM. Pass scraped text from .onion sites and get a structured OSINT investigation report back. Use after sicry_fetch or sicry_search to process raw dark web content into actionable intelligence.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Raw text content from a dark web page or search results to analyze."
+          },
+          "query": {
+            "type": "string",
+            "description": "The original investigation goal or query for context."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "threat_intel",
+              "ransomware",
+              "ransomware_malware",
+              "personal_identity",
+              "corporate",
+              "corporate_espionage"
+            ],
+            "description": "Analysis mode. 'threat_intel' is the default general-purpose mode. 'ransomware'/'ransomware_malware' and 'corporate'/'corporate_espionage' are accepted aliases.",
+            "default": "threat_intel"
+          },
+          "custom_instructions": {
+            "type": "string",
+            "description": "Optional: extra focus area or constraints appended to the analysis prompt."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "sicry_check_engines",
+      "description": "Ping all 18 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "max_workers": {
+            "type": "integer",
+            "description": "Number of parallel ping workers. Default 8.",
+            "default": 8
+          }
+        },
+        "required": []
+      }
+    }
+  ],
+  "openai": [
+    {
+      "type": "function",
+      "function": {
+        "name": "sicry_check_tor",
+        "description": "Verify Tor is running and confirm the machine is routing traffic through the Tor network. Call this before any dark web operations.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sicry_renew_identity",
+        "description": "Rotate the Tor circuit to get a new exit node and new identity. Use this to avoid fingerprinting between investigation sessions.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "required": []
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sicry_fetch",
+        "description": "Fetch any URL through Tor \u2014 works for both normal websites (clearnet via Tor exit node) and .onion hidden services. Returns the page title, full clean text, and all hyperlinks found on the page. Use this to read specific .onion pages the same way you'd use fetch_url() or browser_read_page() for normal websites.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "The URL to fetch. Can be a normal http/https URL or a .onion address. Example: 'http://example.onion/page'"
+            }
+          },
+          "required": [
+            "url"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sicry_search",
+        "description": "Search the Tor network / dark web for the given query across up to 16 .onion search engines simultaneously (Ahmia, Tor66, Excavator, Torgle, and 12 more). Returns a deduplicated list of {title, url, engine} results. Use this the same way you'd call web_search() or brave_search() for the regular internet.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "Search query \u2014 keywords or short phrase. Keep under 5 words for best results across onion search engines."
+            },
+            "max_results": {
+              "type": "integer",
+              "description": "Maximum number of unique results to return. Default 20.",
+              "default": 20
+            },
+            "engines": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, TorNet, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 18."
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sicry_ask",
+        "description": "Analyze and summarize dark web content using an LLM. Pass scraped text from .onion sites and get a structured OSINT investigation report back. Use after sicry_fetch or sicry_search to process raw dark web content into actionable intelligence.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "string",
+              "description": "Raw text content from a dark web page or search results to analyze."
+            },
+            "query": {
+              "type": "string",
+              "description": "The original investigation goal or query for context."
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "threat_intel",
+                "ransomware",
+                "ransomware_malware",
+                "personal_identity",
+                "corporate",
+                "corporate_espionage"
+              ],
+              "description": "Analysis mode. 'threat_intel' is the default general-purpose mode. 'ransomware'/'ransomware_malware' and 'corporate'/'corporate_espionage' are accepted aliases.",
+              "default": "threat_intel"
+            },
+            "custom_instructions": {
+              "type": "string",
+              "description": "Optional: extra focus area or constraints appended to the analysis prompt."
+            }
+          },
+          "required": [
+            "content"
+          ]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "sicry_check_engines",
+        "description": "Ping all 18 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "max_workers": {
+              "type": "integer",
+              "description": "Number of parallel ping workers. Default 8.",
+              "default": 8
+            }
+          },
+          "required": []
+        }
+      }
+    }
+  ],
+  "gemini": [
+    {
+      "name": "sicry_check_tor",
+      "description": "Verify Tor is running and confirm the machine is routing traffic through the Tor network. Call this before any dark web operations.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "sicry_renew_identity",
+      "description": "Rotate the Tor circuit to get a new exit node and new identity. Use this to avoid fingerprinting between investigation sessions.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    },
+    {
+      "name": "sicry_fetch",
+      "description": "Fetch any URL through Tor \u2014 works for both normal websites (clearnet via Tor exit node) and .onion hidden services. Returns the page title, full clean text, and all hyperlinks found on the page. Use this to read specific .onion pages the same way you'd use fetch_url() or browser_read_page() for normal websites.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "The URL to fetch. Can be a normal http/https URL or a .onion address. Example: 'http://example.onion/page'"
+          }
+        },
+        "required": [
+          "url"
+        ]
+      }
+    },
+    {
+      "name": "sicry_search",
+      "description": "Search the Tor network / dark web for the given query across up to 16 .onion search engines simultaneously (Ahmia, Tor66, Excavator, Torgle, and 12 more). Returns a deduplicated list of {title, url, engine} results. Use this the same way you'd call web_search() or brave_search() for the regular internet.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query \u2014 keywords or short phrase. Keep under 5 words for best results across onion search engines."
+          },
+          "max_results": {
+            "type": "integer",
+            "description": "Maximum number of unique results to return. Default 20.",
+            "default": 20
+          },
+          "engines": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, TorNet, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 18."
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    },
+    {
+      "name": "sicry_ask",
+      "description": "Analyze and summarize dark web content using an LLM. Pass scraped text from .onion sites and get a structured OSINT investigation report back. Use after sicry_fetch or sicry_search to process raw dark web content into actionable intelligence.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Raw text content from a dark web page or search results to analyze."
+          },
+          "query": {
+            "type": "string",
+            "description": "The original investigation goal or query for context."
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "threat_intel",
+              "ransomware",
+              "ransomware_malware",
+              "personal_identity",
+              "corporate",
+              "corporate_espionage"
+            ],
+            "description": "Analysis mode. 'threat_intel' is the default general-purpose mode. 'ransomware'/'ransomware_malware' and 'corporate'/'corporate_espionage' are accepted aliases.",
+            "default": "threat_intel"
+          },
+          "custom_instructions": {
+            "type": "string",
+            "description": "Optional: extra focus area or constraints appended to the analysis prompt."
+          }
+        },
+        "required": [
+          "content"
+        ]
+      }
+    },
+    {
+      "name": "sicry_check_engines",
+      "description": "Ping all 18 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "max_workers": {
+            "type": "integer",
+            "description": "Number of parallel ping workers. Default 8.",
+            "default": 8
+          }
+        },
+        "required": []
+      }
+    }
+  ]
+}
