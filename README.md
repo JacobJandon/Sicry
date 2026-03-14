@@ -1,5 +1,9 @@
 # SICRY — Tor/Onion Network Access Layer for AI Agents
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/JacobJandon/Sicry/blob/main/LICENSE)
+
+**by JacobJandon** &nbsp;·&nbsp; [github.com/JacobJandon/Sicry](https://github.com/JacobJandon/Sicry)
+
 One Python file. Drop it into any project and your AI agent gets full access to the Tor/.onion dark web — the same clean tool interface agents use for the regular internet, just now for hidden services.
 
 Robin's complete search engine catalogue (18 engines) and OSINT pipeline are baked in directly. No Robin install needed. No extra processes. No config beyond a `.env` file.
@@ -965,5 +969,13 @@ SICRY suppresses urllib3 and all stem sub-loggers (`stem`, `stem.control`, `stem
 - Search engine list and OSINT prompts from [Robin](https://github.com/apurvsinghgautam/robin) by [@apurvsinghgautam](https://github.com/apurvsinghgautam) — MIT licence
 - Additional verified `.onion` addresses from [dark.fail](https://dark.fail) (PGP-verified)
 - Tor: [torproject.org](https://www.torproject.org/)
+
+---
+
+## License
+
+MIT License — Copyright (c) 2026 JacobJandon
+
+See [LICENSE](LICENSE) for full text.
 
 Use responsibly and lawfully.
