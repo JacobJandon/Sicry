@@ -1,6 +1,7 @@
 # SICRY™ — Tor/Onion Network Access Layer for AI Agents
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/JacobJandon/Sicry/blob/main/LICENSE)
+[![CI](https://github.com/JacobJandon/Sicry/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobJandon/Sicry/actions/workflows/ci.yml)
 
 **by JacobJandon** &nbsp;·&nbsp; [github.com/JacobJandon/Sicry](https://github.com/JacobJandon/Sicry)
 
