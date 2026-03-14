@@ -1,4 +1,4 @@
-# SICRY — Tor/Onion Network Access Layer for AI Agents
+# SICRY™ — Tor/Onion Network Access Layer for AI Agents
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/JacobJandon/Sicry/blob/main/LICENSE)
 
@@ -19,7 +19,7 @@ python sicry.py check  # → CONNECTED via Tor  |  exit IP: 185.220.101.5
 
 ## Contents
 
-1. [What SICRY does](#what-sicry-does)
+1. [What SICRY™ does](#what-sicry-does)
 2. [Installation](#installation)
 3. [Quickstart](#quickstart)
 4. [All nine functions](#all-nine-functions)
@@ -36,11 +36,11 @@ python sicry.py check  # → CONNECTED via Tor  |  exit IP: 185.220.101.5
 
 ---
 
-## What SICRY does
+## What SICRY™ does
 
-SICRY gives AI agents exactly 6 tools — the same 6 they already know how to use for the clearnet, just now running over Tor:
+SICRY™ gives AI agents exactly 6 tools — the same 6 they already know how to use for the clearnet, just now running over Tor:
 
-| SICRY tool | Clearnet equivalent | What it does |
+| SICRY™ tool | Clearnet equivalent | What it does |
 |---|---|---|
 | `sicry_check_tor` | health check | Verify Tor is active, get exit IP |
 | `sicry_renew_identity` | reset session | Rotate circuit, get new exit node |
@@ -217,7 +217,7 @@ Auth is attempted in order:
 3. Cookie file from common system paths (`/tmp/tor_data`, `/var/lib/tor`, `~/.tor`, `/run/tor`)
 4. Empty-string / null auth (Tor with no password at all)
 
-**Works out of the box** with SICRY's recommended torrc (cookie auth). See [Tor setup](#tor-setup).
+**Works out of the box** with SICRY™'s recommended torrc (cookie auth). See [Tor setup](#tor-setup).
 
 ---
 
@@ -351,7 +351,7 @@ report = sicry.ask(
 )
 ```
 
-- If no LLM key is set, returns a `[SICRY: ...]` error string — **never raises**.
+- If no LLM key is set, returns a `[SICRY™: ...]` error string — **never raises**.
 - Content is truncated to `MAX_CONTENT_CHARS` (default 8000) before sending to the LLM.
 
 ---
@@ -381,7 +381,7 @@ print(f"Fastest: {fastest['name']} ({fastest['latency_ms']}ms)")
 
 ## Tool schemas
 
-SICRY exposes all 6 tools in the native format for each major framework. All three formats are always in sync.
+SICRY™ exposes all 6 tools in the native format for each major framework. All three formats are always in sync.
 
 ```python
 import sicry
@@ -655,7 +655,7 @@ Cursor (`settings.json`):
 }
 ```
 
-The 6 SICRY tools are registered automatically via FastMCP. Requires: `pip install mcp`
+The 6 SICRY™ tools are registered automatically via FastMCP. Requires: `pip install mcp`
 
 ---
 
@@ -880,7 +880,7 @@ echo "CookieAuthentication 1" >> /etc/tor/torrc
 systemctl restart tor
 ```
 
-### SICRY's recommended torrc
+### SICRY™'s recommended torrc
 
 For development — everything in `/tmp`, no system changes needed:
 
@@ -916,7 +916,7 @@ TOR_CONTROL_PASSWORD=mypassword
 
 ### How `renew_identity()` auth works
 
-SICRY tries 4 authentication strategies, in order, until one succeeds:
+SICRY™ tries 4 authentication strategies, in order, until one succeeds:
 
 1. **`TOR_CONTROL_PASSWORD`** — use env var as string password
 2. **Cookie file from `TOR_DATA_DIR`** — read `$TOR_DATA_DIR/control_auth_cookie` as raw bytes
@@ -953,14 +953,14 @@ The hidden service is down or Tor is slow. Try another URL from `search()`, or c
 **Search returns 0 results**
 Dark web indexes go down frequently. Run `check_search_engines()` to find live engines, then pass them explicitly: `search(query, engines=["Ahmia", "Ahmia-clearnet"])`.
 
-**`[SICRY: OPENAI_API_KEY not set...]`**
+**`[SICRY™: OPENAI_API_KEY not set...]`**
 Set `LLM_PROVIDER=ollama` to use local inference with no key, or add the relevant key to `.env`. `search()`, `fetch()`, `check_tor()`, `renew_identity()`, `scrape_all()`, and `check_search_engines()` all work without any LLM key.
 
 **Slow searches**
 Tor has variable latency. Use `check_search_engines()` to find the fastest live engines. `engines=["Ahmia", "Ahmia-clearnet"]` is the fastest reliable configuration.
 
 **Log spam / stem DEBUG output**
-SICRY suppresses urllib3 and all stem sub-loggers (`stem`, `stem.control`, `stem.response`, `stem.socket`, `stem.connection`, `stem.util`) completely on import, set to CRITICAL with NullHandler and `propagate=False`. If you still see debug output, ensure you import `sicry` before configuring any root log handlers.
+SICRY™ suppresses urllib3 and all stem sub-loggers (`stem`, `stem.control`, `stem.response`, `stem.socket`, `stem.connection`, `stem.util`) completely on import, set to CRITICAL with NullHandler and `propagate=False`. If you still see debug output, ensure you import `sicry` before configuring any root log handlers.
 
 ---
 
