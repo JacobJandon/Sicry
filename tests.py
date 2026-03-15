@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SICRY + OnionClaw v1.2.1 — comprehensive test suite
-Tests all v1.2.1 changes: .env chmod on existing installs, BUG-6 except Exception,
+SICRY + OnionClaw v1.2.2 — comprehensive test suite
+Tests all v1.2.2 changes: BUG-1 --check-update standalone, BUG-2 sync_sicry 404 fix,
 redirect de-anonymization blocking, persistent file cache, clear_cache(),
 --clear-cache flag, --cached mode in check_engines.py, --version everywhere,
 and sync_sicry.py documentation.
@@ -52,10 +52,10 @@ def _run_pipeline(*args):
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "1.2.1")
+        self.assertEqual(SICRY.__version__, "1.2.2")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "1.2.1")
+        self.assertEqual(SICRY_OC.__version__, "1.2.2")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -512,10 +512,15 @@ class TestSetupPy(unittest.TestCase):
         self.assertIn("CookieAuthentication 1", src)
 
     def test_env_example_has_cache_ttl(self):
-        """Both .env.example copies must have SICRY_CACHE_TTL."""
+        """UX-2: .env.example must document SICRY_CACHE_TTL."""
         root_ex = os.path.join(_HERE, ".env.example")
+        oc_ex   = os.path.join(_ONION_CLAW, ".env.example")
         if os.path.isfile(root_ex):
-            self.assertIn("SICRY_CACHE_TTL", _read(root_ex))
+            self.assertIn("SICRY_CACHE_TTL", _read(root_ex),
+                          "root .env.example missing SICRY_CACHE_TTL")
+        if os.path.isfile(oc_ex):
+            self.assertIn("SICRY_CACHE_TTL", _read(oc_ex),
+                          "OnionClaw .env.example missing SICRY_CACHE_TTL")
 
     def test_patch_env_function(self):
         """_patch_env in setup.py should be able to add/update keys."""
@@ -583,11 +588,12 @@ class TestCheckTor(unittest.TestCase):
 # 11b. check_update()
 # ═════════════════════════════════════════════════════════════════════════════
 class TestCheckUpdate(unittest.TestCase):
-    """check_update() — GitHub release version check."""
+    """check_update() — GitHub Tags API version check (BUG-3)."""
 
-    def _fake_response(self, tag="1.2.1", html_url="https://github.com/r"):
+    def _fake_response(self, tag="1.2.1"):
+        """Mock the Tags API: returns list of tag objects."""
         m = MagicMock()
-        m.json.return_value = {"tag_name": tag, "html_url": html_url}
+        m.json.return_value = [{"name": f"v{tag}"}]
         m.raise_for_status = lambda: None
         return m
 
@@ -614,7 +620,6 @@ class TestCheckUpdate(unittest.TestCase):
     def test_network_error_is_silent(self):
         with patch("sicry.requests.get", side_effect=Exception("timeout")):
             r = SICRY.check_update()
-        # Must NOT raise — must return a safe fallback dict
         self.assertIsNotNone(r)
         self.assertTrue(r["up_to_date"])  # safe default
         self.assertIsNotNone(r["error"])
@@ -625,10 +630,28 @@ class TestCheckUpdate(unittest.TestCase):
         for key in ("up_to_date", "current", "latest", "url", "error"):
             self.assertIn(key, r, f"check_update() missing key '{key}'")
 
-    def test_github_releases_url_constant_exists(self):
-        self.assertTrue(hasattr(SICRY, "GITHUB_RELEASES_URL"),
-                        "GITHUB_RELEASES_URL constant missing from sicry.py")
-        self.assertIn("JacobJandon/OnionClaw", SICRY.GITHUB_RELEASES_URL)
+    def test_github_tags_url_constant_exists(self):
+        """BUG-3: check_update() must use Tags API, not Releases API."""
+        self.assertTrue(hasattr(SICRY, "GITHUB_TAGS_URL"),
+                        "GITHUB_TAGS_URL constant missing from sicry.py")
+        self.assertIn("JacobJandon/OnionClaw", SICRY.GITHUB_TAGS_URL)
+        self.assertIn("tags", SICRY.GITHUB_TAGS_URL)
+
+    def test_empty_tag_list_handled(self):
+        """BUG-3: empty tags list must not crash."""
+        m = MagicMock()
+        m.json.return_value = []
+        m.raise_for_status = lambda: None
+        with patch("sicry.requests.get", return_value=m):
+            r = SICRY.check_update()
+        self.assertTrue(r["up_to_date"])
+        self.assertIsNotNone(r["error"])
+
+    def test_url_points_to_tag(self):
+        """BUG-3: url must reference the specific tag, not a generic page."""
+        with patch("sicry.requests.get", return_value=self._fake_response("99.0.0")):
+            r = SICRY.check_update()
+        self.assertIn("99.0.0", r["url"])
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -724,9 +747,15 @@ class TestFilesConsistency(unittest.TestCase):
         self.assertEqual(root, oc, "sicry.py root and OnionClaw copies differ!")
 
     def test_env_example_has_cache_ttl(self):
-        ex = os.path.join(_HERE, ".env.example")
-        if os.path.isfile(ex):
-            self.assertIn("SICRY_CACHE_TTL", _read(ex))
+        """Both .env.example copies must have SICRY_CACHE_TTL."""
+        root_ex = os.path.join(_HERE, ".env.example")
+        oc_ex   = os.path.join(_ONION_CLAW, ".env.example")
+        if os.path.isfile(root_ex):
+            self.assertIn("SICRY_CACHE_TTL", _read(root_ex),
+                          "root .env.example missing SICRY_CACHE_TTL")
+        if os.path.isfile(oc_ex):
+            self.assertIn("SICRY_CACHE_TTL", _read(oc_ex),
+                          "OnionClaw .env.example missing SICRY_CACHE_TTL")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -797,6 +826,72 @@ class TestLive(unittest.TestCase):
             # No control port — expected failure
             self.assertFalse(r["success"])
             self.assertIsNotNone(r["error"])
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# UX-1: check_tor.py and renew.py --version / --help flags
+# ═════════════════════════════════════════════════════════════════════════════
+class TestCheckTorRenewFlags(unittest.TestCase):
+    """UX-1: check_tor.py and renew.py must expose --version and --help."""
+
+    def _check_tor_src(self):
+        return _read(os.path.join(_ONION_CLAW, "check_tor.py"))
+
+    def _renew_src(self):
+        return _read(os.path.join(_ONION_CLAW, "renew.py"))
+
+    def test_check_tor_has_argparse(self):
+        self.assertIn("argparse", self._check_tor_src())
+
+    def test_renew_has_argparse(self):
+        self.assertIn("argparse", self._renew_src())
+
+    def test_check_tor_has_version_flag(self):
+        src = self._check_tor_src()
+        self.assertIn("--version", src,
+                      "check_tor.py must have --version flag")
+        self.assertIn("action=\"version\"", src)
+
+    def test_renew_has_version_flag(self):
+        src = self._renew_src()
+        self.assertIn("--version", src,
+                      "renew.py must have --version flag")
+        self.assertIn("action=\"version\"", src)
+
+    def test_check_tor_has_json_flag(self):
+        self.assertIn("--json", self._check_tor_src())
+
+    def test_renew_has_json_flag(self):
+        self.assertIn("--json", self._renew_src())
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# BUG-2: sync_sicry.py tag mismatch docs
+# ═════════════════════════════════════════════════════════════════════════════
+class TestSyncSicryDocs(unittest.TestCase):
+    """BUG-2: sync_sicry.py must document tag mismatch and give clear 404 error."""
+
+    def _src(self):
+        return _read(os.path.join(_ONION_CLAW, "sync_sicry.py"))
+
+    def test_tag_mismatch_documented(self):
+        """BUG-2: docstring must explain SICRY™ vs OnionClaw separate tag cadences."""
+        src = self._src()
+        self.assertIn("independent", src,
+                      "sync_sicry.py must explain independent release cadences")
+
+    def test_404_specific_handler(self):
+        """BUG-2: 404 must produce a specific helpful error, not a bare exception dump."""
+        src = self._src()
+        self.assertIn("404", src,
+                      "sync_sicry.py must handle 404 specifically")
+        self.assertIn("SICRY", src)
+
+    def test_no_raise_for_status(self):
+        """BUG-2: raise_for_status() causes double/confusing output — must not be used."""
+        src = self._src()
+        self.assertNotIn("raise_for_status", src,
+                         "sync_sicry.py must not use raise_for_status() (causes double output)")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -960,6 +1055,27 @@ class TestPipelineFixes(unittest.TestCase):
         src = self._src()
         self.assertIn("check_update", src)
         self.assertIn("up_to_date", src)
+
+    def test_query_not_required_for_check_update(self):
+        """BUG-1: --check-update must work without --query.
+        Fix: --query must NOT be required=True at parse time;
+        it is checked manually after the standalone flags exit."""
+        src = self._src()
+        # The --query arg definition must NOT contain 'required=True'
+        # (required validation happens manually after standalone flags)
+        lines = src.splitlines()
+        query_lines = [l for l in lines if "--query" in l and "add_argument" in l]
+        self.assertGreater(len(query_lines), 0, "--query arg definition not found")
+        for l in query_lines:
+            self.assertNotIn("required=True", l,
+                             "--query must not be required=True — breaks --check-update")
+
+    def test_query_manual_check_present(self):
+        """BUG-1: after standalone flags, --query is validated manually."""
+        src = self._src()
+        # Must have manual 'if not args.query' guard
+        self.assertIn("if not args.query", src,
+                      "pipeline.py must manually validate --query after standalone flags")
 
 
 class TestSetupPyAuthAndMCP(unittest.TestCase):

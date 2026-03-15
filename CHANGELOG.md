@@ -7,6 +7,15 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [1.2.2] — 2026-03-15
+
+### Fixed
+- **Tests**: Updated `TestVersion` to v1.2.2; added `TestCheckTorRenewFlags`,
+  `TestSyncSicryDocs` classes; rewrote `TestCheckUpdate` mocks for Tags API.
+  211 tests pass.
+
+---
+
 ## [1.2.1] — 2026-03-15
 
 ### Fixed
