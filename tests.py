@@ -54,10 +54,10 @@ def _run_pipeline(*args):
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.0.0")
+        self.assertEqual(SICRY.__version__, "2.0.1")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.0.0")
+        self.assertEqual(SICRY_OC.__version__, "2.0.1")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -1928,13 +1928,13 @@ class TestSetupChmod(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV200Version(unittest.TestCase):
-    """Both copies must declare version 2.0.0."""
+    """Both copies must declare version 2.0.1."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.0.0")
+        self.assertEqual(SICRY.__version__, "2.0.1")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.0.0")
+        self.assertEqual(SICRY_OC.__version__, "2.0.1")
 
 
 class TestSQLiteCache(unittest.TestCase):
