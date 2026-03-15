@@ -7,6 +7,18 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [1.2.1] — 2026-03-15
+
+### Fixed
+- **Tests**: Updated `TestPipelineFixes.test_out_exits_1_on_oserror` to match
+  the broadened `except Exception` handler introduced in v1.2.1 of OnionClaw;
+  added `test_out_handler_not_bare_oserror` guard. 190 tests pass.
+- **Tests**: Added `TestSetupChmod.test_chmod_runs_before_early_return` and
+  `TestSetupPyAuthAndMCP` AUTH-1 assertions for `_fix_cookie_auth()`,
+  `CookieAuthFileGroupReadable`, and systemd drop-in constants.
+
+---
+
 ## [1.2.0] — 2026-03-15
 
 ### Added

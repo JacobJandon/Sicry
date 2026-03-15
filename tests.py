@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-SICRY + OnionClaw v1.2.0 — comprehensive test suite
-Tests all v1.2.0 changes: SAFETY-1 token-pair matching, .env chmod 600,
+SICRY + OnionClaw v1.2.1 — comprehensive test suite
+Tests all v1.2.1 changes: .env chmod on existing installs, BUG-6 except Exception,
 redirect de-anonymization blocking, persistent file cache, clear_cache(),
 --clear-cache flag, --cached mode in check_engines.py, --version everywhere,
 and sync_sicry.py documentation.
@@ -52,10 +52,10 @@ def _run_pipeline(*args):
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "1.2.0")
+        self.assertEqual(SICRY.__version__, "1.2.1")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "1.2.0")
+        self.assertEqual(SICRY_OC.__version__, "1.2.1")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -858,15 +858,35 @@ class TestPipelineFixes(unittest.TestCase):
         self.assertIn("query.strip()", self._src())
 
     def test_out_exits_1_on_oserror(self):
-        """BUG-6: --out permission denied must exit 1, not 0."""
+        """BUG-6: --out permission failure must exit 1.
+        Handlers now use 'except Exception' to catch PermissionError,
+        FUSE errors, UnicodeEncodeError, etc — not just bare OSError."""
         src = self._src()
-        # Both OSError handlers must have sys.exit(1)
-        oserr_parts = src.split("except OSError")
-        self.assertGreater(len(oserr_parts), 1, "No OSError handler found")
-        for part in oserr_parts[1:]:
-            block = part[:200]
+        # Locate the two '--out' write-error handlers by their unique message
+        # and verify sys.exit(1) immediately follows each one.
+        msg = "could not write output file"
+        parts = src.split(msg)
+        self.assertGreater(len(parts), 1,
+                           "pipeline.py --out error message not found")
+        for part in parts[1:]:
+            block = part[:150]
             self.assertIn("sys.exit(1)", block,
-                          "OSError handler does not call sys.exit(1)")
+                          "--out exception handler does not call sys.exit(1)")
+
+    def test_out_handler_not_bare_oserror(self):
+        """BUG-6: --out must NOT use bare 'except OSError' (too narrow)."""
+        src = self._src()
+        # Count 'except OSError' in --out related blocks (should be 0)
+        # We allow OSError elsewhere (e.g. in .env chmod), just not in --out
+        # The two --out blocks must use 'except Exception'
+        out_blocks = [i for i, line in enumerate(src.splitlines())
+                      if 'with open(args.out' in line]
+        self.assertGreater(len(out_blocks), 0, "No --out write blocks found")
+        for lineno in out_blocks:
+            # Within 10 lines after the open(args.out, find the except
+            window = "\n".join(src.splitlines()[lineno:lineno+10])
+            self.assertNotIn("except OSError", window,
+                             f"--out handler near line {lineno+1} uses bare 'except OSError'")
 
     def test_total_steps_always_7(self):
         """UX-4: TOTAL should always be 7."""
@@ -889,6 +909,34 @@ class TestSetupPyAuthAndMCP(unittest.TestCase):
     def test_auth_verification_present(self):
         """AUTH-1/AUTH-2: setup.py must test actual Tor auth."""
         self.assertIn("authenticate", self._src())
+
+    def test_group_fix_applied_not_just_documented(self):
+        """AUTH-1: setup.py must actually call usermod, not just document it."""
+        src = self._src()
+        self.assertIn("usermod", src,
+                      "setup.py must call usermod to add user to debian-tor")
+        self.assertIn("subprocess", src,
+                      "setup.py must use subprocess to apply group fix")
+
+    def test_cookie_file_group_readable_in_setup(self):
+        """AUTH-1: torrc must include CookieAuthFileGroupReadable 1."""
+        src = self._src()
+        self.assertIn("CookieAuthFileGroupReadable", src,
+                      "setup.py must add CookieAuthFileGroupReadable 1 to torrc")
+
+    def test_systemd_dropin_defined(self):
+        """AUTH-1: setup.py must define a systemd drop-in to chmod the cookie."""
+        src = self._src()
+        self.assertIn("SYSTEMD_DROPIN", src,
+                      "setup.py must define SYSTEMD_DROPIN_PATH for permanent fix")
+        self.assertIn("ExecStartPost", src,
+                      "systemd drop-in must use ExecStartPost to chmod cookie")
+
+    def test_fix_cookie_auth_function_exists(self):
+        """AUTH-1: _fix_cookie_auth() must be a callable function."""
+        src = self._src()
+        self.assertIn("def _fix_cookie_auth(", src,
+                      "setup.py must define _fix_cookie_auth() function")
 
     def test_group_fix_documented(self):
         """AUTH-1: setup.py must mention debian-tor group fix."""
@@ -1650,6 +1698,18 @@ class TestSetupChmod(unittest.TestCase):
                       "setup_env() must call os.chmod")
         self.assertIn("0o600", func_body,
                       "setup_env() must chmod to 0o600")
+
+    def test_chmod_runs_before_early_return(self):
+        """chmod must run BEFORE the early return so existing .env files
+        also get their permissions corrected (not only fresh setups)."""
+        src = _read(os.path.join(_ONION_CLAW, "setup.py"))
+        idx_func = src.index("def setup_env(")
+        func_body = src[idx_func: idx_func + 4000]
+        idx_chmod  = func_body.index("chmod")
+        # The 'return' that exits when user skips reconfigure must come AFTER chmod
+        idx_return = func_body.index("return")
+        self.assertLess(idx_chmod, idx_return,
+                        "os.chmod must appear before the early 'return' in setup_env()")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
