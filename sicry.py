@@ -120,6 +120,37 @@ LLM_PROVIDER       = os.getenv("LLM_PROVIDER", "openai")
 _FETCH_CACHE: dict[str, tuple[float, dict]] = {}
 
 # ─────────────────────────────────────────────────────────────────
+# CONTENT SAFETY  — keyword blacklist (SAFETY-1)
+# Applied to every search result and fetched page before returning to caller.
+# Zero tolerance: results matching any term are silently dropped; fetch()
+# returns an error dict rather than displaying illegal content.
+# ─────────────────────────────────────────────────────────────────
+_CONTENT_BLACKLIST: frozenset[str] = frozenset({
+    # child sexual abuse material (CSAM)
+    "child porn", "childporn", "cp porn", "pedo", "paedo",
+    "lolita", "loli ", "lolicon", "shotacon",
+    "preteen sex", "preteen nude", "preteens sex",
+    "underage sex", "underage nude", "underage porn",
+    "jailbait", "jail bait",
+    "teen porn", "teenporn", "teens sex", "teen nude",
+    "child erotica", "child sex", "child nude", "child model",
+    "boy lover", "girl lover", "boylover", "girllover",
+    "toddler sex", "infant sex", "baby sex",
+    "incest child", "minor sex", "minors sex",
+    "hurtcore",
+    # other hard illegal content
+    "snuff film", "snuff video",
+    "red room",
+})
+
+
+def _is_content_safe(text: str) -> bool:
+    """Return False if text contains any blacklisted term (case-insensitive)."""
+    lower = text.lower()
+    return not any(term in lower for term in _CONTENT_BLACKLIST)
+
+
+# ─────────────────────────────────────────────────────────────────
 # ROTATING USER AGENTS  (same pool Robin uses)
 # ─────────────────────────────────────────────────────────────────
 
@@ -343,6 +374,10 @@ def fetch(url: str, _use_cache: bool = True) -> dict:
 
     def _parse_response(resp: requests.Response, final_url: str) -> dict:
         """Extract title / text / links from a successful HTTP response."""
+        # UX-1: fix mojibake — if server reported ISO-8859-1 (HTTP default) but
+        # content is actually UTF-8 or another encoding, use apparent_encoding.
+        if resp.encoding and resp.encoding.upper() in ("ISO-8859-1", "LATIN-1"):
+            resp.encoding = resp.apparent_encoding or "utf-8"
         html = resp.text
         soup = BeautifulSoup(html, "html.parser")
 
@@ -350,10 +385,22 @@ def fetch(url: str, _use_cache: bool = True) -> dict:
         if soup.title and soup.title.string:
             title = soup.title.string.strip()
 
+        # SAFETY-1: block pages with illegal titles before emitting any content
+        check_str = (title or "") + " " + final_url
+        if not _is_content_safe(check_str):
+            return {
+                "url": final_url, "is_onion": is_onion, "status": resp.status_code,
+                "title": "[content blocked]", "text": "",
+                "links": [], "truncated": False,
+                "error": "SICRY safety filter: content matches illegal-content blacklist",
+            }
+
         for tag in soup(["script", "style", "noscript"]):
             tag.decompose()
-        body_text = re.sub(r"\n{3,}", "\n\n", soup.get_text(separator="\n")).strip()
-        body_text = body_text[:MAX_CONTENT_CHARS]
+        raw_text = re.sub(r"\n{3,}", "\n\n", soup.get_text(separator="\n")).strip()
+        # BUG-3: record whether content was truncated (exposed in return dict)
+        truncated = len(raw_text) > MAX_CONTENT_CHARS
+        body_text = raw_text[:MAX_CONTENT_CHARS]
 
         base = urlparse(final_url)
         links: list[dict] = []
@@ -366,7 +413,8 @@ def fetch(url: str, _use_cache: bool = True) -> dict:
 
         return {
             "url": final_url, "is_onion": is_onion, "status": resp.status_code,
-            "title": title, "text": body_text, "links": links[:80], "error": None,
+            "title": title, "text": body_text, "links": links[:80],
+            "truncated": truncated, "error": None,
         }
 
     for attempt_url in urls_to_try:
@@ -394,7 +442,7 @@ def fetch(url: str, _use_cache: bool = True) -> dict:
 
     return {
         "url": url, "is_onion": is_onion, "status": 0,
-        "title": None, "text": "", "links": [], "error": last_err,
+        "title": None, "text": "", "links": [], "truncated": False, "error": last_err,
     }
 
 
@@ -414,14 +462,23 @@ def scrape_all(urls: list[dict], max_workers: int = 5) -> dict:
         t = item.get("title", "")
         if not u:
             return u, t
+        # SAFETY-1: skip URLs/titles matching the blacklist
+        if not _is_content_safe(u + " " + t):
+            return u, ""  # return empty so it won't be included
         try:
             session = _build_tor_session()
             session.headers["User-Agent"] = random.choice(_USER_AGENTS)
             resp = session.get(u, timeout=TOR_TIMEOUT)
+            # UX-1: fix mojibake from servers that report ISO-8859-1 by default
+            if resp.encoding and resp.encoding.upper() in ("ISO-8859-1", "LATIN-1"):
+                resp.encoding = resp.apparent_encoding or "utf-8"
             soup = BeautifulSoup(resp.text, "html.parser")
             for tag in soup(["script", "style"]):
                 tag.decompose()
             text = " ".join(soup.get_text(separator=" ").split())
+            # SAFETY-1: also check page body
+            if not _is_content_safe(text[:500]):
+                return u, ""
             content = f"{t} - {text}"
             if len(content) > 2000:
                 content = content[:2000] + "...(truncated)"
@@ -549,7 +606,7 @@ def filter_results(
 
 
 def check_search_engines(max_workers: int = 8) -> list[dict]:
-    """Ping all 18 search engines via Tor and return per-engine status with latency.
+    """Ping all 12 active search engines via Tor and return per-engine status with latency.
     Robin health.py pattern — tells you which engines are alive before you search.
 
     Args:
@@ -602,17 +659,17 @@ def search(
     max_workers: int = 8,
 ) -> list[dict]:
     """
-    Search the Tor network across 18 dark web search indexes simultaneously.
+    Search the Tor network across 12 verified-live dark web search indexes simultaneously.
     The onion equivalent of web_search() or brave_search().
+    All results are passed through a content safety filter before being returned.
 
     Args:
         query:       What to search for (natural language or keywords).
         engines:     Optional list of specific engine names to use.
-                     Defaults to ALL 18 engines in parallel.
-                     Options: Ahmia, OnionLand, Torgle, Amnesia, Kaizer,
-                              Anima, Tornado, TorNet, Torland, FindTor,
+                     Defaults to ALL 12 engines in parallel.
+                     Options: Ahmia, OnionLand, Amnesia, Torland,
                               Excavator, Onionway, Tor66, OSS, Torgol,
-                              TheDeepSearches
+                              TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet
         max_results: Max unique results returned after dedup. Default 20.
         max_workers: Parallel search threads. Default 8.
 
@@ -687,6 +744,10 @@ def search(
             for item in future.result():
                 clean = item["url"].rstrip("/")
                 if clean not in lock_seen:
+                    # SAFETY-1: filter illegal content before returning
+                    safe_str = item.get("title", "") + " " + item.get("url", "")
+                    if not _is_content_safe(safe_str):
+                        continue
                     lock_seen.add(clean)
                     results.append(item)
 
@@ -944,7 +1005,7 @@ TOOLS = [
                 "engines": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, TorNet, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 18.",
+                    "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Amnesia, Torland, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 12.",
                 },
             },
             "required": ["query"],
@@ -980,7 +1041,7 @@ TOOLS = [
     },
     {
         "name": "sicry_check_engines",
-        "description": "Ping all 18 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
+        "description": "Ping all 12 active dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -1090,7 +1151,13 @@ def _start_mcp_server():
     try:
         from mcp.server.fastmcp import FastMCP
     except ImportError:
-        print("MCP not installed. Run: pip install mcp", file=sys.stderr)
+        print(
+            "MCP not installed.\n"
+            "  pip install mcp --user          # user install (works on PEP 668 systems)\n"
+            "  pipx install mcp                # per-tool isolated install\n"
+            "  pip install mcp --break-system-packages  # override system guard (Debian/Ubuntu)",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     mcp = FastMCP("sicry", description="Tor/Onion dark web access for AI agents")
@@ -1116,7 +1183,7 @@ def _start_mcp_server():
                   custom_instructions: str = "") -> str:
         return ask(content, query=query, mode=mode, custom_instructions=custom_instructions)
 
-    @mcp.tool(description="Ping all 18 dark web search engines via Tor. Returns per-engine status and latency. Use to check which engines are alive before searching.")
+    @mcp.tool(description="Ping all 12 active dark web search engines via Tor. Returns per-engine status and latency. Use to check which engines are alive before searching.")
     def sicry_check_engines(max_workers: int = 8) -> list:
         return check_search_engines(max_workers=max_workers)
 
@@ -1136,7 +1203,7 @@ if __name__ == "__main__":
         epilog="""
 Commands:
   check                          verify Tor is running
-  search "query" [--max N]       search dark web (18 engines)
+  search "query" [--max N]       search dark web (12 engines)
   fetch <url>                    fetch any URL through Tor
   tools [--format openai|gemini] print tool schemas as JSON
   serve                          start MCP server

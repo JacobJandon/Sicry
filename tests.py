@@ -344,7 +344,7 @@ class TestFetchSOCKSRetry(unittest.TestCase):
 # 7. fetch() — return shape + field validation
 # ═════════════════════════════════════════════════════════════════════════════
 class TestFetchReturnShape(unittest.TestCase):
-    REQUIRED = {"url", "is_onion", "status", "title", "text", "links", "error"}
+    REQUIRED = {"url", "is_onion", "status", "title", "text", "links", "error", "truncated"}
 
     def setUp(self):
         SICRY._FETCH_CACHE.clear()
@@ -354,6 +354,8 @@ class TestFetchReturnShape(unittest.TestCase):
         resp = MagicMock()
         resp.status_code = 200
         resp.text = html
+        resp.encoding = "utf-8"          # prevent ISO-8859-1 branch
+        resp.apparent_encoding = "utf-8"
         mock_session.get.return_value = resp
         with patch.object(SICRY, "_build_tor_session", return_value=mock_session):
             return SICRY.fetch(url)
@@ -380,6 +382,17 @@ class TestFetchReturnShape(unittest.TestCase):
     def test_is_onion_dotOnion(self):
         r = self._mock_success("<html></html>", "http://abc.onion/")
         self.assertTrue(r["is_onion"])
+
+    def test_truncated_false_for_short(self):
+        """BUG-3: 'truncated' should be False for short content."""
+        r = self._mock_success("<html><body>short</body></html>", "http://t.onion/")
+        self.assertFalse(r["truncated"])
+
+    def test_truncated_true_for_big(self):
+        """BUG-3: 'truncated' should be True when content exceeds MAX_CONTENT_CHARS."""
+        big = "A" * 20000
+        r = self._mock_success(f"<html><body>{big}</body></html>", "http://big.onion/")
+        self.assertTrue(r["truncated"])
 
     def test_text_truncated_to_max_chars(self):
         big = "A" * 20000
@@ -447,9 +460,9 @@ class TestPipelineNoLLM(unittest.TestCase):
         self.assertIn("Result filtering skipped", src)
 
     def test_total_steps_conditional(self):
-        """TOTAL should be 4 when NO_LLM, 7 when not."""
+        """TOTAL should always be 7 (LLM steps are skipped via [skip N/7] labels)."""
         src = _read(os.path.join(_ONION_CLAW, "pipeline.py"))
-        self.assertIn("4 if NO_LLM else 7", src)
+        self.assertIn("TOTAL = 7", src)
 
     def test_no_llm_out_flag_works(self):
         """pipeline.py --no-llm should write a file when --out is supplied (no Tor needed for source check)."""
@@ -730,6 +743,183 @@ class TestLive(unittest.TestCase):
             # No control port — expected failure
             self.assertFalse(r["success"])
             self.assertIsNotNone(r["error"])
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# v1.1.1 regression tests — 15 bug fixes
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestSafetyBlacklist(unittest.TestCase):
+    """SAFETY-1: content blacklist and _is_content_safe()."""
+
+    def test_safe_function_exists(self):
+        self.assertTrue(hasattr(SICRY, "_is_content_safe"),
+                        "_is_content_safe() missing from sicry.py")
+
+    def test_blacklist_exists(self):
+        self.assertTrue(hasattr(SICRY, "_CONTENT_BLACKLIST"),
+                        "_CONTENT_BLACKLIST missing from sicry.py")
+
+    def test_clean_text_passes(self):
+        self.assertTrue(SICRY._is_content_safe("dark web threat intelligence"))
+
+    def test_csam_term_blocked(self):
+        self.assertFalse(SICRY._is_content_safe("jailbait site underground"))
+
+    def test_csam_compound_blocked(self):
+        self.assertFalse(SICRY._is_content_safe("child sex marketplace"))
+
+    def test_case_insensitive(self):
+        self.assertFalse(SICRY._is_content_safe("JAILBAIT"))
+
+    def test_search_result_blocked(self):
+        """search() should drop results matching the blacklist."""
+        # Build a fake result list and confirm the blacklist filter removes bad entries
+        results = [
+            {"title": "Normal hacking forum", "url": "http://a.onion/", "engine": "Test"},
+            {"title": "jailbait photos archive", "url": "http://b.onion/", "engine": "Test"},
+        ]
+        filtered = [r for r in results if SICRY._is_content_safe(
+            r.get("title", "") + " " + r.get("url", ""))]
+        self.assertEqual(len(filtered), 1)
+        self.assertEqual(filtered[0]["title"], "Normal hacking forum")
+
+
+class TestSearchScriptFlags(unittest.TestCase):
+    """BUG-1/BUG-4/BUG-5: search.py CLI."""
+
+    def _src(self):
+        return _read(os.path.join(_ONION_CLAW, "search.py"))
+
+    def test_json_flag_present(self):
+        """BUG-1: --json flag must be defined in search.py."""
+        self.assertIn("--json", self._src())
+
+    def test_empty_query_guard(self):
+        """BUG-5: search.py must guard against empty --query."""
+        self.assertIn("query.strip()", self._src())
+
+    def test_engine_validation_exit_on_all_invalid(self):
+        """BUG-4: if all engines invalid, script must exit 1."""
+        src = self._src()
+        self.assertIn("sys.exit(1)", src)
+        self.assertIn("none of the specified engines", src)
+
+    def test_no_bare_json_at_end(self):
+        """BUG-1: JSON should not be printed unconditionally at end."""
+        lines = self._src().splitlines()
+        # The final print(json.dumps...) must be guarded by if args.json
+        json_lines = [i for i, l in enumerate(lines) if "json.dumps(results" in l]
+        for li in json_lines:
+            # Walk back to find if/else guard
+            block = "\n".join(lines[max(0, li-5):li+1])
+            self.assertIn("args.json", block,
+                          f"json.dumps at line {li+1} not guarded by args.json")
+
+
+class TestFetchScriptFixes(unittest.TestCase):
+    """BUG-2/BUG-3: fetch.py CLI."""
+
+    def _src(self):
+        return _read(os.path.join(_ONION_CLAW, "fetch.py"))
+
+    def test_fetching_header_guarded(self):
+        """BUG-2: 'Fetching ...' print must be inside if not args.json block."""
+        src = self._src()
+        idx_fetch = src.index("Fetching")
+        # The nearest preceding if-block must mention args.json
+        preceding = src[max(0, idx_fetch-200):idx_fetch]
+        self.assertIn("args.json", preceding,
+                      "'Fetching...' print is not guarded by args.json check")
+
+    def test_no_bare_json_at_end(self):
+        """BUG-2: stray json.dumps at end of fetch.py must be gone."""
+        lines = self._src().splitlines()
+        # Check last 8 lines for bare json.dumps
+        last_block = "\n".join(lines[-8:])
+        self.assertNotIn("json.dumps(result", last_block,
+                         "Stray json.dumps(result) still at end of fetch.py")
+
+    def test_truncated_display_present(self):
+        """BUG-3: fetch.py must show truncation notice."""
+        self.assertIn("truncated", self._src())
+
+
+class TestPipelineFixes(unittest.TestCase):
+    """BUG-5/BUG-6/UX-4: pipeline.py."""
+
+    def _src(self):
+        return _read(os.path.join(_ONION_CLAW, "pipeline.py"))
+
+    def test_empty_query_guard(self):
+        """BUG-5: pipeline.py must guard against empty --query."""
+        self.assertIn("query.strip()", self._src())
+
+    def test_out_exits_1_on_oserror(self):
+        """BUG-6: --out permission denied must exit 1, not 0."""
+        src = self._src()
+        # Both OSError handlers must have sys.exit(1)
+        oserr_parts = src.split("except OSError")
+        self.assertGreater(len(oserr_parts), 1, "No OSError handler found")
+        for part in oserr_parts[1:]:
+            block = part[:200]
+            self.assertIn("sys.exit(1)", block,
+                          "OSError handler does not call sys.exit(1)")
+
+    def test_total_steps_always_7(self):
+        """UX-4: TOTAL should always be 7."""
+        self.assertIn("TOTAL = 7", self._src())
+
+    def test_no_llm_step_labels(self):
+        """UX-4: skipped steps must use [skip N/7] format."""
+        src = self._src()
+        self.assertIn("skip 3/", src)
+        self.assertIn("skip 5/", src)
+        self.assertIn("skip 7/", src)
+
+
+class TestSetupPyAuthAndMCP(unittest.TestCase):
+    """AUTH-1/AUTH-2/MCP-1/MCP-2: setup.py."""
+
+    def _src(self):
+        return _read(os.path.join(_ONION_CLAW, "setup.py"))
+
+    def test_auth_verification_present(self):
+        """AUTH-1/AUTH-2: setup.py must test actual Tor auth."""
+        self.assertIn("authenticate", self._src())
+
+    def test_group_fix_documented(self):
+        """AUTH-1: setup.py must mention debian-tor group fix."""
+        self.assertIn("debian-tor", self._src())
+
+    def test_password_auth_documented(self):
+        """AUTH-1: setup.py must document HashedControlPassword option."""
+        self.assertIn("HashedControlPassword", self._src())
+
+    def test_mcp_optional_dep_documented(self):
+        """MCP-1: setup.py check_deps must mention mcp."""
+        self.assertIn("mcp", self._src())
+
+    def test_mcp_user_install_hint(self):
+        """MCP-2: setup.py must include --user install hint for mcp."""
+        src = self._src()
+        self.assertIn("--user", src)
+
+
+class TestRequirementsMCP(unittest.TestCase):
+    """MCP-1: OnionClaw/requirements.txt must mention mcp."""
+
+    def test_mcp_in_requirements(self):
+        req = _read(os.path.join(_ONION_CLAW, "requirements.txt"))
+        self.assertIn("mcp", req)
+
+
+class TestSKILLMDSyncDocs(unittest.TestCase):
+    """UX-2: sync_sicry.py must be documented in SKILL.md."""
+
+    def test_sync_sicry_documented(self):
+        skill = _read(os.path.join(_ONION_CLAW, "SKILL.md"))
+        self.assertIn("sync_sicry", skill)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
