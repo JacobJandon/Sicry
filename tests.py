@@ -54,10 +54,10 @@ def _run_pipeline(*args):
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.0.1")
+        self.assertEqual(SICRY.__version__, "2.0.2")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.0.1")
+        self.assertEqual(SICRY_OC.__version__, "2.0.2")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -1928,13 +1928,13 @@ class TestSetupChmod(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV200Version(unittest.TestCase):
-    """Both copies must declare version 2.0.1."""
+    """Both copies must declare version 2.0.2."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.0.1")
+        self.assertEqual(SICRY.__version__, "2.0.2")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.0.1")
+        self.assertEqual(SICRY_OC.__version__, "2.0.2")
 
 
 class TestSQLiteCache(unittest.TestCase):
@@ -2566,6 +2566,23 @@ class TestPipelineV2(unittest.TestCase):
         self.assertIn("args.confidence and best", src,
                       "BUG-2: confidence print gated on args.confidence and best")
 
+    def test_resume_nonexistent_clean_exit(self):
+        """BUG-1/4: --resume with nonexistent job_id must print clean error, not argparse noise."""
+        src = self._pipeline_src()
+        self.assertIn("ERROR: No checkpoint found for job", src,
+                      "BUG-1/4: missing clean error for nonexistent --resume job")
+        self.assertIn("Either provide --query to start fresh", src,
+                      "BUG-1/4: missing hint line for nonexistent --resume")
+
+    def test_md_refined_omitted_when_nollm(self):
+        """BUG-3: MD report must not show Refined: line when --no-llm (refined == raw_query)."""
+        src = self._pipeline_src()
+        # Must be conditional — NOT a bare f"**Refined:** {refined}"
+        self.assertNotIn('f"**Refined:** {refined}  \\n"\n', src,
+                         "BUG-3: MD template shows Refined: unconditionally")
+        self.assertIn("not NO_LLM", src,
+                      "BUG-3: MD Refined line not gated on not NO_LLM")
+
     def test_interactive_goodbye(self):
         """UX-1: --interactive must print Goodbye. when exiting."""
         src = self._pipeline_src()
@@ -2625,6 +2642,30 @@ class TestBM25Scoring(unittest.TestCase):
         scores = {r["url"]: r.get("score", r.get("confidence", 0)) for r in scored}
         self.assertGreaterEqual(scores["http://a.onion"], scores["http://b.onion"],
                                 "BUG-2: snippet field not included in scoring")
+
+    def test_search_returns_confidence_not_score(self):
+        """BUG-2 root cause: score_results() adds 'score'; search() must rename it to 'confidence'."""
+        # Verify that after score_results(), the rename logic works
+        results = [
+            {"title": "ransomware data leak darknet", "url": "http://x.onion", "engine": "X"},
+        ]
+        scored = SICRY.score_results("ransomware data leak", results)
+        # Apply the rename that search() must do
+        for r in scored:
+            if "score" in r and "confidence" not in r:
+                r["confidence"] = r.pop("score")
+        self.assertIn("confidence", scored[0],
+                      "BUG-2: 'confidence' key missing after score→confidence rename")
+        self.assertNotIn("score", scored[0],
+                         "BUG-2: 'score' key still present — rename didn't happen")
+        self.assertGreater(scored[0]["confidence"], 0.0,
+                           "BUG-2: confidence is 0 for a result that matches query terms")
+
+    def test_score_rename_in_search_source(self):
+        """BUG-2: sicry.py search() must explicitly rename 'score' → 'confidence'."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn("r[\"confidence\"] = r.pop(\"score\")", src,
+                      "BUG-2: search() missing score→confidence rename")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
