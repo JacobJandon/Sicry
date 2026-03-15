@@ -2523,6 +2523,187 @@ class TestPipelineV2(unittest.TestCase):
         self.assertIn("_save_checkpoint", src)
         self.assertIn("_ckpt", src)
 
+    def test_resume_uses_long_ttl(self):
+        """BUG-1: --resume must use a long TTL (>= 1 day) not ttl=0."""
+        src = self._pipeline_src()
+        # ttl=0 would always return None — must use a long window
+        self.assertNotIn("ttl=0", src,
+                         "BUG-1: cache_get called with ttl=0 — checkpoints never load")
+        self.assertIn("86400", src,
+                      "BUG-1: resume TTL missing — checkpoint window must be in days")
+
+    def test_resume_saves_query_meta(self):
+        """BUG-1: pipeline must persist query in __meta__ so resume works without --query."""
+        src = self._pipeline_src()
+        self.assertIn("__meta__", src)
+        self.assertIn("query", src)
+
+    def test_interval_without_watch_warns(self):
+        """BUG-4: pipeline must warn when --interval is used without --watch."""
+        src = self._pipeline_src()
+        self.assertIn("WARN: --interval", src,
+                      "BUG-4: missing --interval-without-watch warning")
+
+    def test_empty_query_clean_error(self):
+        """UX-2: empty --query must produce clean error, NOT argparse usage dump."""
+        src = self._pipeline_src()
+        # Must explicitly catch empty string before argparse.error()
+        self.assertIn("cannot be empty", src,
+                      "UX-2: no clean empty-query error message")
+
+    def test_refined_query_null_nollm(self):
+        """UX-3: refined_query must be null/None in JSON output with --no-llm."""
+        src = self._pipeline_src()
+        self.assertIn("None if NO_LLM else refined", src,
+                      "UX-3: refined_query not null in no-LLM JSON output")
+
+    def test_confidence_scores_printed_nollm(self):
+        """BUG-2: --confidence with --no-llm must print scores to terminal in step 5."""
+        src = self._pipeline_src()
+        # Must have a print inside the NO_LLM block that shows conf= value
+        self.assertIn("4f", src,
+                      "BUG-2: score format string missing — confidence scores not printed")
+        self.assertIn("args.confidence and best", src,
+                      "BUG-2: confidence print gated on args.confidence and best")
+
+    def test_interactive_goodbye(self):
+        """UX-1: --interactive must print Goodbye. when exiting."""
+        src = self._pipeline_src()
+        self.assertIn("Goodbye.", src, "UX-1: no Goodbye confirmation on exit")
+
+    def test_interactive_help_text(self):
+        """UX-1: --interactive must show command help after each result set."""
+        src = self._pipeline_src()
+        self.assertIn("Commands:", src,
+                      "UX-1: interactive mode missing Commands: help line")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# BUG-2: BM25 behavioural tests (non-zero scores for matching terms)
+# ═════════════════════════════════════════════════════════════════════════════
+class TestBM25Scoring(unittest.TestCase):
+    """score_results() must return non-zero scores for term-matching results."""
+
+    def _score(self, query, results):
+        return SICRY.score_results(query, results)
+
+    def test_relevant_result_has_nonzero_score(self):
+        """BUG-2: a result whose title matches query terms must not score 0.0."""
+        results = [
+            {"title": "ransomware data leak forum", "url": "http://a.onion",
+             "engine": "Ahmia", "snippet": "fresh ransomware leak"},
+            {"title": "weather forecast today", "url": "http://b.onion",
+             "engine": "Torch"},
+        ]
+        scored = self._score("ransomware data leak", results)
+        top = scored[0]
+        s = top.get("score", top.get("confidence", 0))
+        self.assertGreater(s, 0.0,
+                           "BUG-2: top result score is 0.0 — BM25 avgdl misconfigured")
+
+    def test_irrelevant_result_scores_lower(self):
+        """BUG-2: unrelated result must score lower than the matching one."""
+        results = [
+            {"title": "weather forecast today completely unrelated",
+             "url": "http://b.onion", "engine": "X"},
+            {"title": "ransomware data leak darknet forum",
+             "url": "http://a.onion", "engine": "X"},
+        ]
+        scored = self._score("ransomware data leak", results)
+        top_score  = scored[0].get("score", scored[0].get("confidence", 0))
+        last_score = scored[-1].get("score", scored[-1].get("confidence", 0))
+        self.assertGreaterEqual(top_score, last_score)
+        self.assertGreater(top_score, 0.0)
+
+    def test_snippet_improves_score(self):
+        """BUG-2: results with snippet field must score higher than title-only when snippet matches."""
+        with_snippet = {"title": "darknet forum", "url": "http://a.onion",
+                        "engine": "X", "snippet": "ransomware data leak fresh dump"}
+        without_snippet = {"title": "darknet forum", "url": "http://b.onion",
+                           "engine": "X"}
+        scored = self._score("ransomware data leak", [with_snippet, without_snippet])
+        scores = {r["url"]: r.get("score", r.get("confidence", 0)) for r in scored}
+        self.assertGreaterEqual(scores["http://a.onion"], scores["http://b.onion"],
+                                "BUG-2: snippet field not included in scoring")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# BUG-1: --resume checkpoint round-trip
+# ═════════════════════════════════════════════════════════════════════════════
+class TestResumeCheckpoint(unittest.TestCase):
+    """Checkpoint save → load round-trip using _DB directly."""
+
+    def setUp(self):
+        import tempfile
+        self._tmp = tempfile.mktemp(suffix=".db")
+
+    def tearDown(self):
+        try:
+            os.unlink(self._tmp)
+        except OSError:
+            pass
+
+    def _db(self):
+        if not hasattr(SICRY, "_DB"):
+            self.skipTest("_DB not in sicry")
+        return SICRY._DB(self._tmp)
+
+    def test_checkpoint_save_and_load(self):
+        """BUG-1: checkpoint saved with cache_set is retrievable with ttl=days."""
+        db = self._db()
+        payload = {
+            "steps": {"search": True},
+            "data": {
+                "__meta__": {"query": "privacy tools", "mode": "threat_intel"},
+                "search": [{"url": "http://x.onion", "title": "test"}],
+            },
+        }
+        db.cache_set("pipeline_checkpoint:abc123", "pipeline", payload)
+        # Must load with a positive TTL (90 days)
+        loaded = db.cache_get("pipeline_checkpoint:abc123", "pipeline",
+                              ttl=86400 * 90)
+        self.assertIsNotNone(loaded, "BUG-1: checkpoint not found with ttl=86400*90")
+        self.assertEqual(
+            loaded["data"]["__meta__"]["query"], "privacy tools",
+            "BUG-1: query not preserved in checkpoint __meta__",
+        )
+
+    def test_checkpoint_zero_ttl_returns_none(self):
+        """BUG-1: ttl=0 must return None (never load) — confirms old bug was the ttl=0 call."""
+        db = self._db()
+        db.cache_set("pipeline_checkpoint:zz", "pipeline", {"x": 1})
+        result = db.cache_get("pipeline_checkpoint:zz", "pipeline", ttl=0)
+        self.assertIsNone(result,
+                          "cache_get(ttl=0) should always return None")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# BUG-3: engine ping error messages
+# ═════════════════════════════════════════════════════════════════════════════
+class TestEngineErrorMessages(unittest.TestCase):
+    """_ping() inside check_search_engines() must not blame Tor for engine timeouts."""
+
+    def test_ping_timeout_error_is_engine_specific(self):
+        """BUG-3: a timed-out engine must say 'engine timed out', not 'Tor circuit unavailable'."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn("engine timed out (hidden service unreachable or slow)", src,
+                      "BUG-3: engine-specific timeout message missing")
+
+    def test_ping_socks_error_is_engine_specific(self):
+        """BUG-3: SOCKS error inside _ping must say 'engine unreachable', not blame Tor globally."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn("engine unreachable via Tor circuit", src,
+                      "BUG-3: engine-specific SOCKS message missing")
+
+    def test_ping_does_not_delegate_to_friendly_error(self):
+        """BUG-3: _ping() must handle its own exceptions, not route through _friendly_error."""
+        import re
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        m = re.search(r"def _ping\(engine.*?(?=\n    def |\nresults_map)", src, re.DOTALL)
+        self.assertIsNotNone(m, "_ping() function not found in sicry.py")
+        self.assertNotIn("_friendly_error", m.group(0),
+                         "BUG-3: _ping() still delegates to _friendly_error — engine errors blame Tor")
+
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Runner
