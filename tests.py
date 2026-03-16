@@ -66,10 +66,10 @@ def _read_oc_src(filename: str) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.4")
+        self.assertEqual(SICRY.__version__, "2.1.5")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.4")
+        self.assertEqual(SICRY_OC.__version__, "2.1.5")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -1091,14 +1091,13 @@ class TestPipelineFixes(unittest.TestCase):
     def test_out_handler_not_bare_oserror(self):
         """BUG-6: --out must NOT use bare 'except OSError' (too narrow)."""
         src = self._src()
-        # Count 'except OSError' in --out related blocks (should be 0)
-        # We allow OSError elsewhere (e.g. in .env chmod), just not in --out
-        # The two --out blocks must use 'except Exception'
+        # After IMPROVE-8, the file is opened via _out_path variable.
+        # Count 'with open(_out_path' in the output section (should be >= 1)
         out_blocks = [i for i, line in enumerate(src.splitlines())
-                      if 'with open(args.out' in line]
+                      if 'with open(_out_path' in line or 'with open(args.out' in line]
         self.assertGreater(len(out_blocks), 0, "No --out write blocks found")
         for lineno in out_blocks:
-            # Within 10 lines after the open(args.out, find the except
+            # Within 10 lines after the open, find the except
             window = "\n".join(src.splitlines()[lineno:lineno+10])
             self.assertNotIn("except OSError", window,
                              f"--out handler near line {lineno+1} uses bare 'except OSError'")
@@ -1968,13 +1967,13 @@ class TestSetupChmod(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV200Version(unittest.TestCase):
-    """Both copies must declare version 2.1.4."""
+    """Both copies must declare version 2.1.5."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.1.4")
+        self.assertEqual(SICRY.__version__, "2.1.5")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.4")
+        self.assertEqual(SICRY_OC.__version__, "2.1.5")
 
 
 class TestSQLiteCache(unittest.TestCase):
@@ -3573,6 +3572,279 @@ class TestPipelineModeFilterMessage(unittest.TestCase):
         src = _read_oc_src("pipeline.py")
         self.assertIn("NOTE: --engines overrides mode", src,
                       "pipeline.py must print a NOTE when --engines overrides mode routing")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# v2.1.5 bug fixes + improvements
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestScoreResultsQueryGuard(unittest.TestCase):
+    """BUG-1 v2.1.5: score_results() must not crash when query is a list."""
+
+    def test_score_results_with_list_query_no_crash(self):
+        results = [{"title": "test dark web market", "url": "http://a.onion/", "engine": "Ahmia"}]
+        # Must not raise AttributeError
+        scored = SICRY.score_results(["dark", "web", "market"], results)
+        self.assertIsInstance(scored, list)
+
+    def test_score_results_list_query_joined_to_string(self):
+        results = [{"title": "ransomware leak database", "url": "http://b.onion/", "engine": "Tor66"}]
+        scored_list  = SICRY.score_results(["ransomware", "leak"], results)
+        scored_str   = SICRY.score_results("ransomware leak", results)
+        # Both paths must produce the same score
+        self.assertEqual(
+            round(scored_list[0].get("score", scored_list[0].get("confidence", 0)), 4),
+            round(scored_str[0].get("score", scored_str[0].get("confidence", 0)), 4),
+        )
+
+    def test_score_results_empty_list_query(self):
+        results = [{"title": "test", "url": "http://c.onion/", "engine": "X"}]
+        # Empty list should not crash
+        scored = SICRY.score_results([], results)
+        self.assertIsInstance(scored, list)
+
+
+class TestScoreResultsTextsParam(unittest.TestCase):
+    """BUG-3 v2.1.5: score_results() accepts texts param to improve BM25 scoring."""
+
+    def test_score_results_accepts_texts_param(self):
+        results = [{"title": "short", "url": "http://d.onion/", "engine": "Ahmia"}]
+        texts = {"http://d.onion/": "ransomware leak dark web market stolen credentials"}
+        # Must not raise TypeError
+        scored = SICRY.score_results("ransomware credentials", results, texts=texts)
+        self.assertIsInstance(scored, list)
+        self.assertGreater(len(scored), 0)
+
+    def test_score_results_texts_improves_score_for_content_rich_page(self):
+        """A page with matching text should score higher than one with no text."""
+        results = [
+            {"title": "Forum", "url": "http://rich.onion/", "engine": "A"},
+            {"title": "Blank", "url": "http://empty.onion/", "engine": "A"},
+        ]
+        texts = {"http://rich.onion/": "ransomware leak stolen data credential dump dark web"}
+        scored = SICRY.score_results("ransomware credentials", results, texts=texts)
+        urls = [r["url"] for r in scored]
+        # The page with matching content must rank first
+        self.assertEqual(urls[0], "http://rich.onion/")
+
+    def test_score_results_texts_none_works_same_as_before(self):
+        results = [{"title": "ransomware", "url": "http://e.onion/", "engine": "Tor66"}]
+        s1 = SICRY.score_results("ransomware", results, texts=None)
+        s2 = SICRY.score_results("ransomware", results)
+        self.assertEqual(
+            round(s1[0].get("score", s1[0].get("confidence", 0)), 4),
+            round(s2[0].get("score", s2[0].get("confidence", 0)), 4),
+        )
+
+
+class TestSearchMemCache(unittest.TestCase):
+    """BUG-6 v2.1.5: in-process search memory cache (_SEARCH_MEM_CACHE) exists."""
+
+    def test_search_mem_cache_module_dict_exists(self):
+        self.assertIsInstance(SICRY._SEARCH_MEM_CACHE, dict)
+
+    def test_search_mem_cache_name_in_module(self):
+        self.assertIn("_SEARCH_MEM_CACHE", dir(SICRY))
+
+
+class TestSQLiteWALMode(unittest.TestCase):
+    """BUG-6 v2.1.5: _DB._conn() must configure WAL mode and NORMAL sync."""
+
+    def test_db_conn_sets_wal_mode(self):
+        src = _read_src()
+        self.assertIn("journal_mode=WAL", src,
+                      "_DB._conn() must set WAL journal mode for SQLite")
+
+    def test_db_conn_sets_normal_sync(self):
+        src = _read_src()
+        self.assertIn("synchronous=NORMAL", src,
+                      "_DB._conn() must set PRAGMA synchronous=NORMAL")
+
+
+class TestCrawlLinksFoundAllOnion(unittest.TestCase):
+    """BUG-2 v2.1.5: crawl() links_found must capture all .onion hrefs on pages,
+    not just unvisited same-domain ones that pass the crawl-queue filters."""
+
+    def test_crawl_has_seen_links_set(self):
+        """crawl() must declare a _seen_links dedup set for links_found."""
+        src = _read_src()
+        self.assertIn("_seen_links", src,
+                      "crawl() must use _seen_links set to track all discovered .onion links")
+
+    def test_crawl_links_found_populated_independent_of_crawl_queue(self):
+        """links_found tracking must happen BEFORE the depth/domain/visited check."""
+        src = _read_src()
+        idx_links_found = src.find("BUG-2 fix: record ALL discovered .onion links")
+        idx_child_links_queue = src.find("Collect child links for the crawl queue")
+        self.assertGreater(idx_child_links_queue, idx_links_found,
+                           "links_found all-onion tracking must appear before crawl-queue filter block")
+
+
+class TestSearchAndCrawlDedup(unittest.TestCase):
+    """IMPROVE-6 v2.1.5: search_and_crawl() must deduplicate seeds by .onion domain."""
+
+    def test_search_and_crawl_dedup_in_source(self):
+        src = _read_src()
+        self.assertIn("_seen_sd", src,
+                      "search_and_crawl() must deduplicate seeds by domain (IMPROVE-6)")
+
+    def test_search_and_crawl_dedup_comment(self):
+        src = _read_src()
+        self.assertIn("deduplicate seeds by .onion domain", src)
+
+
+class TestCrawlExportFormatParam(unittest.TestCase):
+    """IMPROVE-7 v2.1.5: crawl_export() must accept a format param."""
+
+    def test_crawl_export_has_format_param(self):
+        import inspect
+        sig = inspect.signature(SICRY.crawl_export)
+        self.assertIn("format", sig.parameters,
+                      "crawl_export() must have a 'format' parameter (IMPROVE-7)")
+
+    def test_crawl_export_format_default_is_json(self):
+        import inspect
+        sig = inspect.signature(SICRY.crawl_export)
+        self.assertEqual(sig.parameters["format"].default, "json")
+
+    def test_crawl_export_stix_returns_string(self):
+        """crawl_export(format='stix') must return a JSON string, not dict."""
+        result = SICRY.crawl_export("nonexistent_job_stix_test", format="stix")
+        self.assertIsInstance(result, str)
+        # Should be valid JSON
+        import json
+        parsed = json.loads(result)
+        self.assertIsInstance(parsed, dict)
+
+    def test_crawl_export_csv_returns_string(self):
+        result = SICRY.crawl_export("nonexistent_job_csv_test", format="csv")
+        self.assertIsInstance(result, str)
+
+    def test_crawl_export_misp_returns_string(self):
+        result = SICRY.crawl_export("nonexistent_job_misp_test", format="misp")
+        self.assertIsInstance(result, str)
+        import json
+        parsed = json.loads(result)
+        self.assertIn("Event", parsed)
+
+
+class TestPipelineV215Additions(unittest.TestCase):
+    """v2.1.5 pipeline.py additions: --modes, --engine-stats, --watch-daemon,
+    --misp-threat-level, --misp-distribution, --output-dir."""
+
+    def test_modes_flag_exists(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("--modes", src, "pipeline.py must have --modes flag (UX-4)")
+
+    def test_engine_stats_flag_exists(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("--engine-stats", src, "pipeline.py must have --engine-stats flag (IMPROVE-2)")
+
+    def test_watch_daemon_flag_exists(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("--watch-daemon", src, "pipeline.py must have --watch-daemon flag (IMPROVE-3)")
+
+    def test_misp_threat_level_flag_exists(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("--misp-threat-level", src,
+                      "pipeline.py must have --misp-threat-level flag (UX-6)")
+
+    def test_misp_distribution_flag_exists(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("--misp-distribution", src,
+                      "pipeline.py must have --misp-distribution flag (UX-6)")
+
+    def test_output_dir_flag_exists(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("--output-dir", src,
+                      "pipeline.py must have --output-dir flag (IMPROVE-8)")
+
+    def test_modes_handler_uses_mode_config(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("sicry.mode_config", src,
+                      "pipeline.py --modes handler must call sicry.mode_config()")
+
+    def test_engine_stats_handler_uses_reliability_scores(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("engine_reliability_scores", src,
+                      "pipeline.py --engine-stats must call engine_reliability_scores()")
+
+    def test_watch_daemon_blocks_in_loop(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("watch_daemon", src)
+        self.assertIn("watch_check()", src)
+
+    def test_misp_threat_level_passed_to_to_misp(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("threat_level=args.misp_threat_level", src,
+                      "pipeline.py misp handler must pass --misp-threat-level to to_misp()")
+
+    def test_misp_distribution_passed_to_to_misp(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("distribution=args.misp_distribution", src,
+                      "pipeline.py misp handler must pass --misp-distribution to to_misp()")
+
+    def test_output_dir_creates_dir(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("os.makedirs(args.output_dir", src,
+                      "pipeline.py --output-dir must create the directory via os.makedirs")
+
+    def test_watch_check_shows_last_and_next_timestamps(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("last_run", src,
+                      "pipeline.py watch-check output must include last_run timestamp (UX-5)")
+        self.assertIn("next_str", src,
+                      "pipeline.py watch-check output must include next-due timestamp (UX-5)")
+
+    def test_watch_disable_validates_job_id(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("no watch job with ID", src,
+                      "pipeline.py --watch-disable must validate the job ID (UX-3)")
+
+    def test_interactive_repl_has_help_command(self):
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("help", src)
+        self.assertIn("history", src,
+                      "pipeline.py interactive REPL must handle 'history' command (UX-7)")
+
+    def test_pipeline_misp_epilog_example(self):
+        """IMPROVE-4: --help epilog must show a MISP format example."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("--format misp", src,
+                      "pipeline.py epilog must include a --format misp usage example (IMPROVE-4)")
+
+    def test_pipeline_bundled_version_check_in_check_update(self):
+        """IMPROVE-5: --check-update handler must check bundled sicry.py version."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("bundled sicry.py", src,
+                      "pipeline.py --check-update must check bundled sicry version (IMPROVE-5)")
+
+    def test_bm25_rescore_after_scrape_in_pipeline(self):
+        """BUG-3: pipeline must re-score best results after step 6 scrape."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("re-score", src,
+                      "pipeline.py must re-score best results using scraped page content (BUG-3)")
+        self.assertIn("texts=pages", src,
+                      "pipeline.py must pass scraped pages to score_results(texts=pages)")
+
+
+class TestSyncSicryCheckBundled(unittest.TestCase):
+    """BUG-5 v2.1.5: sync_sicry.py must have --check-bundled flag."""
+
+    def test_sync_sicry_has_check_bundled_flag(self):
+        src = _read_oc_src("sync_sicry.py")
+        self.assertIn("--check-bundled", src,
+                      "sync_sicry.py must have --check-bundled flag (BUG-5)")
+
+    def test_sync_sicry_check_bundled_compares_versions(self):
+        src = _read_oc_src("sync_sicry.py")
+        self.assertIn("bundled_version", src)
+        self.assertIn("latest_name", src)
+
+    def test_sync_sicry_check_bundled_exits_nonzero_when_behind(self):
+        src = _read_oc_src("sync_sicry.py")
+        self.assertIn("sys.exit(2)", src,
+                      "sync_sicry.py --check-bundled must exit 2 when bundled is behind upstream")
 
 
 # ═════════════════════════════════════════════════════════════════════════════

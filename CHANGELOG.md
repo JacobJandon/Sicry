@@ -7,6 +7,151 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [2.1.5] — 2026-03-16
+
+### Fixed
+- **BUG-1** `score_results()` `AttributeError` when `query` is a `list` — added
+  `isinstance(query, list): query = " ".join(...)` guard before `.lower()`.
+- **BUG-2** `crawl()` `links_found` always empty — now records ALL `.onion` hrefs
+  discovered on each page, independently of crawl-queue filters (depth, domain,
+  visited). Added `_seen_links` dedup set; queue-building is unchanged.
+- **BUG-3** BM25 `conf=0.0000` on thin content — `score_results()` now accepts
+  `texts: dict[str,str] | None` param; pipeline re-scores `best` results after
+  step 6 (scrape) using actual page text for richer IDF weighting.
+- **BUG-5** `sync_sicry` bundled `sicry.py` lag — added `--check-bundled` flag
+  that compares bundled version to latest upstream SICRY™ tag; exits `2` when
+  behind so release scripts can enforce synchronisation.
+- **BUG-6** Cache warm ≥ cold time — `_DB._conn()` now enables WAL journal mode
+  and `PRAGMA synchronous=NORMAL` on every new connection; added
+  `_SEARCH_MEM_CACHE` in-process dict so warm search-cache hits skip SQLite
+  JSON deserialisation entirely.
+
+### Added
+- **UX-3** `--watch-disable` now validates the job ID against `watch_list()`
+  before calling `watch_disable()`; prints a clear error and exits `1` if not
+  found instead of silently doing nothing.
+- **UX-4** `--modes` flag prints each mode name, engine list, `max_results`, and
+  `scrape` counts, then exits.
+- **UX-5** `--watch-check` output now includes `last=<timestamp>` and
+  `next=<timestamp>` per job so overdue or stuck watches are obvious.
+- **UX-6** `--misp-threat-level {1,2,3,4}` and `--misp-distribution {0..5}` flags
+  pass through to `to_misp()` instead of being hardcoded at `2`/`0`.
+- **UX-7** Both interactive modes (`--interactive` standalone and follow-up REPL)
+  now handle `help`/`?` (prints available commands) and `history` (lists prior
+  queries); standalone mode accepts a bare number to fetch result N directly.
+- **IMPROVE-2** `--engine-stats` prints per-engine reliability score, last latency,
+  and last-seen timestamp from `engine_reliability_scores()` /
+  `engine_health_history()`.
+- **IMPROVE-3** `--watch-daemon` runs `watch_check()` as a foreground loop with
+  configurable `--interval` (minutes); `SIGINT` / Ctrl+C exits cleanly.
+- **IMPROVE-4** MISP usage example added to pipeline `--help` epilog.
+- **IMPROVE-5** `--check-update` now also fetches the latest SICRY™ upstream tag
+  and prints a `NOTICE` when the bundled `sicry.py` is behind.
+- **IMPROVE-6** `search_and_crawl()` deduplicates seed URLs by `.onion` domain
+  before crawling — prevents the same hidden service being crawled multiple times
+  when several search results share a domain.
+- **IMPROVE-7** `crawl_export(job_id, format="json")` now accepts `"stix"`,
+  `"misp"`, and `"csv"` format arguments, returning the same output as the
+  corresponding `to_stix()` / `to_misp()` / `to_csv()` functions.
+- **IMPROVE-8** `--output-dir DIR` flag auto-names output files as
+  `DIR/<job_id>.<ext>` for batch / watch workflows (overrides `--out`).
+- MISP epilog example, `sync_sicry --check-bundled` release guard.
+
+### Changed
+- `__version__` bumped to `2.1.5`.
+- `sync_sicry --version` → `2.1.5`.
+
+---
+
+## [2.1.4] — 2026-03-16
+
+### Fixed
+- **CRITICAL-1** `check_engines.py` syntax error: `sys.exit(1)    if not args.json:` merged onto one line; split and verified `SYNTAX OK`.
+- **CRITICAL-2** Added `"csam"` to `_CONTENT_BLACKLIST`.
+- **CRITICAL-3** Added `("child","minor")` and `("kids","child")` to `_TOKEN_PAIR_BLACKLIST`.
+- **BUG-1** `CrawlResult.links_found` changed from `int` to `list[str]`; crawl now appends URLs.
+- **BUG-2** `crawl_export()` now SELECTs `text` and parses `entities` JSON string back to `dict`.
+- **BUG-3** pipeline `new_count` → `result_count` in `--watch-check` output.
+
+### Added
+- `--format misp` in `pipeline.py`; calls `sicry.to_misp()`.
+- `--watch-list` and `--watch-disable JOB_ID` in `pipeline.py`.
+- Mode override `NOTE` printed when `--engines` overrides mode routing.
+
+### Changed
+- `__version__` → `2.1.4`.
+
+---
+
+## [2.1.3] — 2026-03-16
+
+### Fixed
+- `engine-history` / `engines` CLI sub-commands: `KeyError` on `j["id"]` when
+  watch entries lacked the key; normalised via `.get("id","")`.
+- `TorPool` constructor `TypeError` on `pool start` command.
+- Tor pre-check guard added to `fetch.py`, `search.py`, `check_engines.py`.
+- `watch_check()` `new_count` → `result_count` key normalisation.
+- `crawl()` `on_page` callback signature enforced to 3-arg lambda.
+- `_is_content_safe()` rake bypass gap closed.
+
+### Changed
+- `__version__` → `2.1.3`.
+
+---
+
+## [2.1.2] — 2026-03-16
+
+### Fixed
+- `check_engines.py` CLI: `KeyError` on `engines`/`engine-history`.
+- Pool `start` sub-command `TypeError` (`size` kwarg).
+- Tor pre-check added to `scrape.py` and `crawl.py` scripts.
+
+### Changed
+- `__version__` → `2.1.2`.
+
+---
+
+## [2.1.1] — 2026-03-16
+
+### Fixed
+- `check_tor()` false-positive: now probes SOCKS port before making a remote
+  request, eliminating "Tor active" reports when the service is actually down.
+
+### Changed
+- `__version__` → `2.1.1`.
+
+---
+
+## [2.1.0] — 2026-03-16
+
+### Added
+- 15 `ResourceWarning` bare `open().read()` calls replaced with `_read_src()` / `_read_oc_src()` helpers.
+- Full test suite at 419 tests, 0 failures (including live Tor tests).
+
+---
+
+## [2.0.0] — 2026-03-16
+
+### Added
+- Complete ground-up rewrite as SICRY™ v2  
+- `TorPool`: multi-circuit Tor pool with round-robin session assignment.
+- Persistent SQLite cache for fetch, search, engine health, watch jobs, crawl data.
+- `crawl()` depth-first `.onion` spider with entity extraction, `CrawlResult` dataclass.
+- `search_and_crawl()` combined search + concurrent crawl.
+- `watch_add()` / `watch_check()` / `watch_disable()` / `watch_daemon()` alert system.
+- `to_stix()`, `to_misp()`, `to_csv()` export formats.
+- `engine_health_history()`, `engine_reliability_scores()` per-engine rolling stats.
+- `analyze_nollm()` fully offline entity / keyword report (no LLM required).
+- `deduplicate_results()` content-fingerprint dedup.
+- 4 OSINT modes: `threat_intel`, `ransomware`, `personal_identity`, `corporate`.
+- FastMCP server, full tool schemas for Anthropic / OpenAI / Gemini.
+- OnionClaw `pipeline.py` OSINT pipeline with resume checkpoints, confidence scores, watch loop.
+
+### Changed
+- `__version__` → `2.0.0`.
+
+---
+
 ## [1.2.2] — 2026-03-15
 
 ### Fixed
