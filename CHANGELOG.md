@@ -7,6 +7,28 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [2.1.13] — 2026-03-16
+
+### Fixed
+- **[BUG-NEW]** `pipeline.py --scrape 0 --out <file>` silently wrote no file and
+  exited 0 with no actionable warning (present since the first `--scrape` flag).
+
+  **Root cause:** the `if not pages: sys.exit(0)` guard treated `--scrape 0`
+  (user intentionally skipped scraping) identically to "all hidden services were
+  unreachable".  Both paths exited before the output-file block was reached, and
+  the existing message ("No pages could be scraped — all hidden services
+  unreachable") was factually wrong for the intentional case.
+
+  **Fix:** `scrape_count` already distinguishes the two cases:
+  - `scrape_count > 0` and `pages = {}` → truly unreachable → `sys.exit(0)` as
+    before, message unchanged.
+  - `scrape_count == 0` (`--scrape 0`) → prints
+    `"WARN: --scrape 0: no pages scraped — output file will contain search
+    results only."` to stderr and **continues** to step 7 + the file-write
+    block.  The output file is always written.
+
+---
+
 ## [2.1.12] — 2026-03-16
 
 ### Fixed

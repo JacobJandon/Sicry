@@ -66,10 +66,10 @@ def _read_oc_src(filename: str) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.12")
+        self.assertEqual(SICRY.__version__, "2.1.13")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.12")
+        self.assertEqual(SICRY_OC.__version__, "2.1.13")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -1973,10 +1973,10 @@ class TestV200Version(unittest.TestCase):
     """Both copies must declare version 2.1.6."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.1.12")
+        self.assertEqual(SICRY.__version__, "2.1.13")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.12")
+        self.assertEqual(SICRY_OC.__version__, "2.1.13")
 
 
 class TestSQLiteCache(unittest.TestCase):
@@ -4661,18 +4661,7 @@ class TestV211Fixes(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV212VersionBump(unittest.TestCase):
-    """Verify that all version strings were bumped to 2.1.12."""
-
-    def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.12")
-
-    def test_pyproject_version(self):
-        src = _read_src("pyproject.toml")
-        self.assertIn('version = "2.1.12"', src)
-
-    def test_sync_sicry_version(self):
-        src = _read_oc_src("sync_sicry.py")
-        self.assertIn("sync_sicry 2.1.12", src)
+    """Historical: verify v2.1.12 entries exist in changelogs."""
 
     def test_changelog_has_v212_entry(self):
         src = _read_src("CHANGELOG.md")
@@ -4681,9 +4670,6 @@ class TestV212VersionBump(unittest.TestCase):
     def test_onion_claw_changelog_has_v212_entry(self):
         src = _read_oc_src("CHANGELOG.md")
         self.assertIn("## [2.1.12]", src)
-
-    def test_onion_claw_sicry_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.12")
 
 
 class TestV212Fixes(unittest.TestCase):
@@ -4743,6 +4729,84 @@ class TestV212Fixes(unittest.TestCase):
                            "BUG-6: try: not found in watch-check output-dir section")
         self.assertGreater(makedirs_pos, try_pos,
                            "BUG-6: os.makedirs must be inside try: in watch-check handler")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# v2.1.13  Tests
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestV213VersionBump(unittest.TestCase):
+    """Verify that all version strings were bumped to 2.1.13."""
+
+    def test_sicry_version(self):
+        self.assertEqual(SICRY.__version__, "2.1.13")
+
+    def test_pyproject_version(self):
+        src = _read_src("pyproject.toml")
+        self.assertIn('version = "2.1.13"', src)
+
+    def test_sync_sicry_version(self):
+        src = _read_oc_src("sync_sicry.py")
+        self.assertIn("sync_sicry 2.1.13", src)
+
+    def test_changelog_has_v213_entry(self):
+        src = _read_src("CHANGELOG.md")
+        self.assertIn("## [2.1.13]", src)
+
+    def test_onion_claw_changelog_has_v213_entry(self):
+        src = _read_oc_src("CHANGELOG.md")
+        self.assertIn("## [2.1.13]", src)
+
+    def test_onion_claw_sicry_version(self):
+        self.assertEqual(SICRY_OC.__version__, "2.1.13")
+
+
+class TestV213Fixes(unittest.TestCase):
+    """v2.1.13: BUG-NEW -- --scrape 0 --out proceeds and writes the file."""
+
+    def test_scrape_zero_does_not_unconditionally_exit(self):
+        """BUG-NEW: pipeline must NOT sys.exit(0) when scrape_count == 0."""
+        src = _read_oc_src("pipeline.py")
+        # The old bug: single 'if not pages: sys.exit(0)' exited in both cases.
+        # Fixed: exit only when scrape_count > 0.
+        self.assertIn("scrape_count > 0", src,
+                      "pipeline must only sys.exit(0) on empty pages when scrape_count > 0")
+
+    def test_scrape_zero_prints_warn(self):
+        """BUG-NEW: --scrape 0 must print a WARN to stderr, not silently continue."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("WARN: --scrape 0", src,
+                      "pipeline must print WARN when scrape_count==0 and pages is empty")
+
+    def test_scrape_zero_warn_to_stderr(self):
+        """BUG-NEW: the WARN message must go to sys.stderr so stdout stays clean."""
+        src = _read_oc_src("pipeline.py")
+        # WARN line must include file=sys.stderr
+        warn_idx = src.find("WARN: --scrape 0")
+        self.assertGreater(warn_idx, 0)
+        # Within 120 chars of the WARN message (same string literal)
+        context = src[warn_idx:warn_idx + 200]
+        self.assertIn("sys.stderr", context,
+                      "WARN: --scrape 0 message must be printed to sys.stderr")
+
+    def test_scrape_zero_bug_comment_present(self):
+        """BUG-NEW: fix comment must reference v2.1.13."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("BUG-NEW v2.1.13", src,
+                      "pipeline.py must have BUG-NEW v2.1.13 fix comment")
+
+    def test_unreachable_path_still_exits(self):
+        """BUG-NEW: genuinely unreachable pages (scrape_count>0, pages={}) still exit 0."""
+        src = _read_oc_src("pipeline.py")
+        # 'No pages could be scraped' message must still exist
+        self.assertIn("No pages could be scraped", src,
+                      "pipeline must still print the unreachable message for scrape_count>0")
+        # And sys.exit(0) must follow it (within the same block)
+        unreachable_idx = src.find("No pages could be scraped")
+        self.assertGreater(unreachable_idx, 0)
+        block = src[unreachable_idx:unreachable_idx + 100]
+        self.assertIn("sys.exit(0)", block,
+                      "unreachable-pages path must still call sys.exit(0)")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
