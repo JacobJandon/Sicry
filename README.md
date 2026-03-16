@@ -32,8 +32,9 @@ python sicry.py check  # → CONNECTED via Tor  |  exit IP: 185.220.101.5
 10. [18 search engines](#18-search-engines)
 11. [Environment variables](#environment-variables)
 12. [Tor setup](#tor-setup)
-13. [Troubleshooting](#troubleshooting)
-14. [Credits](#credits)
+13. [Architecture](#architecture)
+14. [Troubleshooting](#troubleshooting)
+15. [Credits](#credits)
 
 ---
 
@@ -925,6 +926,114 @@ SICRY™ tries 4 authentication strategies, in order, until one succeeds:
 4. **Null/empty auth** — for Tor with no control password set at all
 
 If all four fail, returns `{"success": False, "error": "..."}` with a helpful message. **Never raises.**
+
+---
+
+## Architecture
+
+How the pieces fit together — from an AI agent calling a tool all the way to a `.onion` response.
+
+### Layer diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        AI Agent / Host                              │
+│  Claude · GPT-4o · Gemini · Ollama · LangChain · CrewAI · MCP      │
+│                 calls tool  →  reads JSON result                    │
+└─────────────────────┬───────────────────────────────────────────────┘
+                      │  tool_name + args  (dict)
+                      ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                      SICRY™  (sicry.py)                             │
+│                                                                     │
+│  dispatch()  ──→  sicry_check_tor      check_tor()                  │
+│              ──→  sicry_renew_identity renew_identity()             │
+│              ──→  sicry_fetch          fetch(url)                   │
+│              ──→  sicry_search         search(query, engines, ...)  │
+│              ──→  sicry_ask            ask(content, mode, ...)      │
+│              ──→  sicry_check_engines  check_search_engines()       │
+│                                                                     │
+│  Quality helpers (call directly):                                   │
+│    refine_query()  ·  filter_results()  ·  scrape_all()            │
+│                                                                     │
+│  State:  SQLite DB (watch jobs · engine stats · result cache)       │
+└──────────┬──────────────────────────┬───────────────────────────────┘
+           │  SOCKS5                  │  stem control socket
+           │  127.0.0.1:9050          │  127.0.0.1:9051
+           ▼                          ▼
+┌──────────────────────┐   ┌──────────────────────┐
+│    Tor Daemon (tor)  │   │  Tor Control Port    │
+│    (tor / TorPool)   │◄──│  renew_identity()    │
+└──────────┬───────────┘   └──────────────────────┘
+           │  onion routing  (3 hops)
+           ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  Dark Web / Tor Network                             │
+│                                                                     │
+│   .onion hidden services       Clearnet via Tor exit nodes          │
+│   ┌───────────────────┐        ┌──────────────────────────────┐    │
+│   │  18 Search Engines│        │  Any clearnet HTTPS/HTTP URL │    │
+│   │  Ahmia · Tor66    │        │  (exit node proxied)         │    │
+│   │  DuckDuckGo-Tor   │        └──────────────────────────────┘    │
+│   │  + 15 more...     │                                             │
+│   └───────────────────┘                                             │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### OSINT pipeline flow
+
+The recommended 7-step pipeline (`pipeline.py` / The full OSINT pipeline section below):
+
+```
+  User query
+     │
+     ▼
+[1] check_tor()            → verify Tor is active (abort if not)
+     │
+     ▼
+[2] check_search_engines() → ping all 18, collect live engine list
+     │
+     ▼
+[3] refine_query()         → LLM: natural language → ≤5 search keywords
+     │
+     ▼
+[4] search()               → query all live engines in parallel over Tor
+     │        ┌── Ahmia ──→ results
+     │        ├── Tor66 ──→ results
+     │        └── ...16 more (concurrent ThreadPoolExecutor)
+     │
+     ▼
+[5] filter_results()       → LLM: pick top 20 most relevant results
+     │
+     ▼
+[6] scrape_all()           → concurrent batch-fetch top pages over Tor
+     │
+     ▼
+[7] ask()                  → LLM OSINT report (threat_intel / ransomware
+     │                        / personal_identity / corporate)
+     ▼
+  Structured report
+```
+
+### TorPool mode (optional)
+
+When `SICRY_POOL_SIZE=N` (recommended 2–4), SICRY™ spawns N independent Tor processes and round-robins requests across them for higher throughput:
+
+```
+sicry_search  ─→  TorPool
+                    ├── tor[0]  :9050  ← SOCKS5 proxy 0
+                    ├── tor[1]  :9052  ← SOCKS5 proxy 1
+                    └── tor[N-1]:...   ← SOCKS5 proxy N-1
+```
+
+Set in `.env`:
+```dotenv
+SICRY_POOL_SIZE=3   # 2–4 recommended; each uses ~50 MB RAM
+```
+
+### Update policy
+
+`check_update()` checks the **GitHub Releases API** (`/releases/latest`) — only published formal releases trigger an update notice. Plain git tags and pre-releases are ignored.
 
 ---
 

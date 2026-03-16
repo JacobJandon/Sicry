@@ -66,10 +66,10 @@ def _read_oc_src(filename: str) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.10")
+        self.assertEqual(SICRY.__version__, "2.1.11")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.10")
+        self.assertEqual(SICRY_OC.__version__, "2.1.11")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -630,12 +630,16 @@ class TestCheckTor(unittest.TestCase):
 # 11b. check_update()
 # ═════════════════════════════════════════════════════════════════════════════
 class TestCheckUpdate(unittest.TestCase):
-    """check_update() — GitHub Tags API version check (BUG-3)."""
+    """check_update() — GitHub Releases API version check (v2.1.11)."""
 
     def _fake_response(self, tag="1.2.1"):
-        """Mock the Tags API: returns list of tag objects."""
+        """Mock the /releases/latest API: returns a single release object."""
         m = MagicMock()
-        m.json.return_value = [{"name": f"v{tag}"}]
+        m.status_code = 200
+        m.json.return_value = {
+            "tag_name": f"v{tag}",
+            "html_url": f"https://github.com/JacobJandon/OnionClaw/releases/tag/v{tag}",
+        }
         m.raise_for_status = lambda: None
         return m
 
@@ -646,7 +650,7 @@ class TestCheckUpdate(unittest.TestCase):
         self.assertIsNone(r["error"])
         self.assertEqual(r["current"], SICRY.__version__)
 
-    def test_not_up_to_date_on_newer_tag(self):
+    def test_not_up_to_date_on_newer_release(self):
         with patch("sicry.requests.get", return_value=self._fake_response("99.99.99")):
             r = SICRY.check_update()
         self.assertFalse(r["up_to_date"])
@@ -654,7 +658,7 @@ class TestCheckUpdate(unittest.TestCase):
         self.assertIsNotNone(r["url"])
         self.assertIsNone(r["error"])
 
-    def test_up_to_date_on_older_tag(self):
+    def test_up_to_date_on_older_release(self):
         with patch("sicry.requests.get", return_value=self._fake_response("0.0.1")):
             r = SICRY.check_update()
         self.assertTrue(r["up_to_date"])
@@ -672,25 +676,24 @@ class TestCheckUpdate(unittest.TestCase):
         for key in ("up_to_date", "current", "latest", "url", "error"):
             self.assertIn(key, r, f"check_update() missing key '{key}'")
 
-    def test_github_tags_url_constant_exists(self):
-        """BUG-3: check_update() must use Tags API, not Releases API."""
-        self.assertTrue(hasattr(SICRY, "GITHUB_TAGS_URL"),
-                        "GITHUB_TAGS_URL constant missing from sicry.py")
-        self.assertIn("JacobJandon/OnionClaw", SICRY.GITHUB_TAGS_URL)
-        self.assertIn("tags", SICRY.GITHUB_TAGS_URL)
+    def test_github_releases_url_constant_exists(self):
+        """v2.1.11: check_update() must use Releases API, not Tags API."""
+        self.assertTrue(hasattr(SICRY, "GITHUB_RELEASES_URL"),
+                        "GITHUB_RELEASES_URL constant missing from sicry.py")
+        self.assertIn("JacobJandon/OnionClaw", SICRY.GITHUB_RELEASES_URL)
+        self.assertIn("releases", SICRY.GITHUB_RELEASES_URL)
 
-    def test_empty_tag_list_handled(self):
-        """BUG-3: empty tags list must not crash."""
+    def test_no_releases_404_handled(self):
+        """v2.1.11: 404 from /releases/latest means no releases yet — must not crash."""
         m = MagicMock()
-        m.json.return_value = []
-        m.raise_for_status = lambda: None
+        m.status_code = 404
         with patch("sicry.requests.get", return_value=m):
             r = SICRY.check_update()
         self.assertTrue(r["up_to_date"])
         self.assertIsNotNone(r["error"])
 
-    def test_url_points_to_tag(self):
-        """BUG-3: url must reference the specific tag, not a generic page."""
+    def test_url_points_to_release(self):
+        """v2.1.11: url must reference the specific release tag, not a generic page."""
         with patch("sicry.requests.get", return_value=self._fake_response("99.0.0")):
             r = SICRY.check_update()
         self.assertIn("99.0.0", r["url"])
@@ -1970,10 +1973,10 @@ class TestV200Version(unittest.TestCase):
     """Both copies must declare version 2.1.6."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.1.10")
+        self.assertEqual(SICRY.__version__, "2.1.11")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.10")
+        self.assertEqual(SICRY_OC.__version__, "2.1.11")
 
 
 class TestSQLiteCache(unittest.TestCase):
@@ -4496,18 +4499,7 @@ class TestV219Fixes(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV2110VersionBump(unittest.TestCase):
-    """Verify that all version strings were bumped to 2.1.10."""
-
-    def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.10")
-
-    def test_pyproject_version(self):
-        src = _read_src("pyproject.toml")
-        self.assertIn('version = "2.1.10"', src)
-
-    def test_sync_sicry_version(self):
-        src = _read_oc_src("sync_sicry.py")
-        self.assertIn("sync_sicry 2.1.10", src)
+    """Historical: verify v2.1.10 entries exist in changelogs."""
 
     def test_changelog_has_v2110_entry(self):
         src = _read_src("CHANGELOG.md")
@@ -4516,9 +4508,6 @@ class TestV2110VersionBump(unittest.TestCase):
     def test_onion_claw_changelog_has_v2110_entry(self):
         src = _read_oc_src("CHANGELOG.md")
         self.assertIn("## [2.1.10]", src)
-
-    def test_onion_claw_sicry_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.10")
 
 
 class TestV2110Fixes(unittest.TestCase):
@@ -4591,6 +4580,94 @@ class TestV2110Fixes(unittest.TestCase):
         src = _read_oc_src(".env.example")
         self.assertIn("SICRY_POOL_SIZE=3", src,
                       "OnionClaw .env.example must have concrete SICRY_POOL_SIZE=3 example ([2] v2.1.10)")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# v2.1.11  Tests
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestV211VersionBump(unittest.TestCase):
+    """Verify that all version strings were bumped to 2.1.11."""
+
+    def test_sicry_version(self):
+        self.assertEqual(SICRY.__version__, "2.1.11")
+
+    def test_pyproject_version(self):
+        src = _read_src("pyproject.toml")
+        self.assertIn('version = "2.1.11"', src)
+
+    def test_sync_sicry_version(self):
+        src = _read_oc_src("sync_sicry.py")
+        self.assertIn("sync_sicry 2.1.11", src)
+
+    def test_changelog_has_v211_entry(self):
+        src = _read_src("CHANGELOG.md")
+        self.assertIn("## [2.1.11]", src)
+
+    def test_onion_claw_changelog_has_v211_entry(self):
+        src = _read_oc_src("CHANGELOG.md")
+        self.assertIn("## [2.1.11]", src)
+
+    def test_onion_claw_sicry_version(self):
+        self.assertEqual(SICRY_OC.__version__, "2.1.11")
+
+
+class TestV211Fixes(unittest.TestCase):
+    """v2.1.11: [1] check_update uses Releases API only, [2] README architecture section."""
+
+    # ── [1]: Releases API ─────────────────────────────────────────────────
+    def test_github_releases_url_constant_exists(self):
+        """GITHUB_RELEASES_URL constant must exist and point to /releases/latest."""
+        self.assertTrue(hasattr(SICRY, "GITHUB_RELEASES_URL"),
+                        "GITHUB_RELEASES_URL missing from sicry.py ([1] v2.1.11)")
+        self.assertIn("releases/latest", SICRY.GITHUB_RELEASES_URL,
+                      "GITHUB_RELEASES_URL must point to /releases/latest endpoint")
+
+    def test_old_github_tags_url_removed(self):
+        """GITHUB_TAGS_URL must no longer exist — replaced by GITHUB_RELEASES_URL."""
+        self.assertFalse(hasattr(SICRY, "GITHUB_TAGS_URL"),
+                         "GITHUB_TAGS_URL must be removed; replaced by GITHUB_RELEASES_URL ([1] v2.1.11)")
+
+    def test_check_update_docstring_mentions_releases(self):
+        """check_update() docstring must mention Releases API."""
+        import inspect
+        doc = inspect.getdoc(SICRY.check_update) or ""
+        self.assertIn("Releases", doc,
+                      "check_update() docstring must mention Releases API ([1] v2.1.11)")
+
+    def test_check_update_uses_releases_url_in_source(self):
+        """sicry.py source must reference GITHUB_RELEASES_URL in check_update body."""
+        src = _read_src("sicry.py")
+        self.assertIn("GITHUB_RELEASES_URL", src)
+        self.assertNotIn("GITHUB_TAGS_URL", src,
+                         "GITHUB_TAGS_URL must not appear in sicry.py ([1] v2.1.11)")
+
+    def test_check_update_handles_missing_tag_name(self):
+        """check_update() must not crash if tag_name absent from response."""
+        m = MagicMock()
+        m.status_code = 200
+        m.json.return_value = {}   # no tag_name key
+        m.raise_for_status = lambda: None
+        with patch("sicry.requests.get", return_value=m):
+            r = SICRY.check_update()
+        self.assertTrue(r["up_to_date"])
+        self.assertIsNotNone(r["error"])
+
+    # ── [2]: README architecture section ──────────────────────────────────────
+    def test_readme_has_architecture_section(self):
+        """README.md must have an Architecture section."""
+        src = _read_src("README.md")
+        self.assertIn("## Architecture", src,
+                      "README.md must have ## Architecture section ([2] v2.1.11)")
+
+    def test_readme_architecture_mentions_sicry(self):
+        """README architecture section must mention SICRY."""
+        src = _read_src("README.md")
+        arch_start = src.find("## Architecture")
+        self.assertGreater(arch_start, 0)
+        arch_section = src[arch_start:arch_start + 2000]
+        self.assertIn("sicry", arch_section.lower(),
+                      "Architecture section must mention sicry ([2] v2.1.11)")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
