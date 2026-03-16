@@ -2,7 +2,7 @@
 # Copyright (c) 2026 JacobJandon — https://github.com/JacobJandon/Sicry
 from __future__ import annotations
 
-__version__ = "2.1.2"
+__version__ = "2.1.3"
 
 """
 SICRY — Tor/Onion Network Access Layer for AI Agents
@@ -461,15 +461,14 @@ def _is_content_safe(text: str) -> bool:
     if any(term in lower for term in _CONTENT_BLACKLIST):
         return False
     # 2. standalone "rape" not caught above (prefix/suffix boundary)
-    if re.search(r'\brake\b', lower) or re.search(r'\brape\b', lower):
-        # allow criminology/news context terms like "date rape statistics"
-        # but block if combined with any sexual/minor context word
-        if re.search(r'\brake\b', lower):
-            pass  # "brake" is safe
-        elif any(kw in lower for kw in ("video", "film", "porn", "site", "photo",
-                                        "image", "upload", "stream", "dark web",
-                                        "onion", "market", "child", "minor",
-                                        "teen", "kids", "baby", "infant")):
+    # "rake" is safe and must NOT short-circuit this check.
+    if re.search(r'\brape\b', lower):
+        # allow criminology/news context: block only when combined with
+        # sexual/minor/distribution context words
+        if any(kw in lower for kw in ("video", "film", "porn", "site", "photo",
+                                      "image", "upload", "stream", "dark web",
+                                      "onion", "market", "child", "minor",
+                                      "teen", "kids", "baby", "infant")):
             return False
     # 3. token-pair check — blocks evasive titles like "KIDS — CHILD — RAPE"
     tokens = set(re.findall(r"[a-z]+", lower))
@@ -3249,8 +3248,8 @@ Examples:
     elif args.cmd == "engines":
         results = check_search_engines(max_workers=args.max_workers, _cached=args.cached)
         for e in results:
-            sym = "✓" if e["reachable"] else "✗"
-            print(f"  {sym} {e['engine']:<30} {e.get('latency_ms', 0):>6.0f}ms  "
+            sym = "✓" if e["status"] == "up" else "✗"
+            print(f"  {sym} {e['name']:<30} {(e.get('latency_ms') or 0):>6.0f}ms  "
                   f"reliability={e.get('reliability', 0):.0%}  {e.get('error') or ''}")
 
     elif args.cmd == "engine-history":
@@ -3258,8 +3257,9 @@ Examples:
         if not hist:
             print(f"No history for '{args.name}'.")
         for row in hist:
-            sym = "✓" if row["reachable"] else "✗"
-            print(f"  {sym}  {row['ts']}  {row.get('latency_ms', 0):.0f}ms")
+            sym = "✓" if row["status"] == "up" else "✗"
+            ts_fmt = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(row["ts"]))
+            print(f"  {sym}  {ts_fmt}  {(row.get('latency_ms') or 0):.0f}ms")
 
     elif args.cmd == "search":
         if not _tor_port_open():
@@ -3325,7 +3325,7 @@ Examples:
             max_pages=args.pages,
             stay_on_domain=args.stay_domain,
             job_id=args.job_id,
-            on_page=lambda p: print(f"  [{p.get('depth',0)}] {p.get('url','')}"),
+            on_page=lambda url, depth, result: print(f"  [{depth}] {url}"),
         )
         print(f"\nJob: {result.job_id}")
         print(f"Pages found : {result.pages_found}")
@@ -3350,8 +3350,8 @@ Examples:
             if not jobs:
                 print("No active watch jobs.")
             for j in jobs:
-                print(f"  {j['job_id']}  [{j['mode']}]  every {j['interval_hours']}h  "
-                      f"next={j.get('next_run','')}  query={j['query']!r}")
+                print(f"  {j['id']}  [{j['mode']}]  every {j['interval_hours']}h  "
+                      f"last={j.get('last_run','')}  query={j['query']!r}")
         elif wc == "disable":
             watch_disable(args.job_id)
             print(f"Disabled: {args.job_id}")
@@ -3360,7 +3360,8 @@ Examples:
             if not alerts:
                 print("No due jobs or no new results.")
             for a in alerts:
-                print(f"  [{a['job_id']}] {a.get('new_count', 0)} new results for {a.get('query')!r}")
+                new_flag = "[NEW]" if a.get("new") else "[unchanged]"
+                print(f"  {new_flag} [{a['job_id']}] {a.get('result_count', 0)} results for {a.get('query')!r}")
         else:
             p_w.print_help()
 

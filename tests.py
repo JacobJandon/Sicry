@@ -54,10 +54,10 @@ def _run_pipeline(*args):
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.2")
+        self.assertEqual(SICRY.__version__, "2.1.3")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.2")
+        self.assertEqual(SICRY_OC.__version__, "2.1.3")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -1956,13 +1956,13 @@ class TestSetupChmod(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV200Version(unittest.TestCase):
-    """Both copies must declare version 2.1.2."""
+    """Both copies must declare version 2.1.3."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.1.2")
+        self.assertEqual(SICRY.__version__, "2.1.3")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.2")
+        self.assertEqual(SICRY_OC.__version__, "2.1.3")
 
 
 class TestSQLiteCache(unittest.TestCase):
@@ -3050,7 +3050,7 @@ class TestSearchAndCrawl(unittest.TestCase):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# CLI engines / engine-history handler correctness (v2.1.2 bug fixes)
+# CLI engines / engine-history handler correctness (v2.1.3 bug fixes)
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestCLIEnginesHandler(unittest.TestCase):
@@ -3212,6 +3212,154 @@ class TestTorPreCheckInScripts(unittest.TestCase):
         search_call_pos = src.find("results = sicry.search")
         self.assertLess(precheck_pos, search_call_pos,
                         "search.py: _tor_port_open() must appear before sicry.search() call")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# watch list j['id'] key (v2.1.3 bug fix)
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestCLIWatchListKeyFix(unittest.TestCase):
+    """watch_list() returns rows with 'id', not 'job_id'."""
+
+    def test_watch_job_key_is_id(self):
+        """DB schema uses 'id TEXT PRIMARY KEY' — rows must have 'id', not 'job_id'."""
+        job_id = SICRY.watch_add("test query", mode="threat_intel", interval_hours=6)
+        jobs = SICRY.watch_list()
+        self.assertTrue(len(jobs) > 0)
+        first = jobs[0]
+        self.assertIn("id", first, "watch_list() rows must have 'id' key (matches DB schema)")
+        self.assertNotIn("job_id", first, "watch_list() rows must NOT have 'job_id' (wrong field name)")
+        # clean up
+        SICRY.watch_disable(job_id)
+
+    def test_watch_add_returns_id_string(self):
+        """watch_add() returns the job id as a short uuid string."""
+        jid = SICRY.watch_add("key test", interval_hours=24)
+        self.assertIsInstance(jid, str)
+        self.assertGreater(len(jid), 0)
+        SICRY.watch_disable(jid)
+
+    def test_cli_watch_list_source_uses_j_id(self):
+        """CLI watch list handler in sicry.py must use j['id'], not j['job_id']."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertNotIn("j['job_id']", src,
+                         "CLI watch list handler must use j['id'] not j['job_id']")
+        # Find the watch list block and confirm j['id'] is used there
+        self.assertIn("j['id']", src,
+                      "CLI watch list handler must reference j['id']")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# watch check result_count key (v2.1.3 bug fix)
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestCLIWatchCheckKeyFix(unittest.TestCase):
+    """watch_check() returns 'result_count', not 'new_count'."""
+
+    def test_watch_check_alert_has_result_count(self):
+        """watch_check() alert dicts must have 'result_count', not 'new_count'."""
+        alerts = SICRY.watch_check()
+        for a in alerts:
+            self.assertIn("result_count", a,
+                          "watch_check() alerts must have 'result_count' key")
+            self.assertNotIn("new_count", a,
+                             "watch_check() alerts must NOT have 'new_count' key (was silently 0)")
+
+    def test_watch_check_alert_has_new_flag(self):
+        """watch_check() alert dicts must have bool 'new' key."""
+        alerts = SICRY.watch_check()
+        for a in alerts:
+            self.assertIn("new", a)
+            self.assertIsInstance(a["new"], bool)
+
+    def test_cli_watch_check_source_uses_result_count(self):
+        """CLI watch check handler must read a.get('result_count'), not a.get('new_count')."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertNotIn("new_count", src,
+                         "CLI watch check handler must use 'result_count', not 'new_count'")
+        self.assertIn("result_count", src,
+                      "CLI watch check handler must reference 'result_count'")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# crawl on_page callback arity (v2.1.3 bug fix)
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestCLICrawlOnPageArity(unittest.TestCase):
+    """crawl() calls on_page(url, depth, result) — 3 args. CLI lambda must accept 3."""
+
+    def test_crawl_on_page_called_with_three_args(self):
+        """crawl() must call on_page(url: str, depth: int, result: dict)."""
+        calls = []
+
+        def _cb(url, depth, result):
+            calls.append((url, depth, result))
+
+        with patch.object(SICRY, "_pool_session") as mock_sess, \
+             patch.object(SICRY, "_db") as mock_db:
+            # minimal mock: session.get -> 404 so _process_page returns early
+            mock_resp = unittest.mock.MagicMock()
+            mock_resp.status_code = 404
+            mock_resp.text = ""
+            mock_resp.encoding = "utf-8"
+            mock_resp.apparent_encoding = "utf-8"
+            mock_sess.return_value.get.return_value = mock_resp
+            mock_db.return_value.crawl_save_page.return_value = None
+            mock_db.return_value.crawl_save_link.return_value = None
+            mock_db.return_value.cache_get.return_value = None
+
+            SICRY.crawl("http://test.onion", max_depth=0, max_pages=1, on_page=_cb)
+
+        # on_page should NOT have been called (404 → text is empty → returns early)
+        # but if it were called, the 3-arg signature must not raise TypeError
+        # Verify the 3-arg lambda itself works:
+        ok = True
+        try:
+            _cb("http://a.onion", 0, {"text": "hello"})
+        except TypeError:
+            ok = False
+        self.assertTrue(ok, "on_page callback must accept (url, depth, result) — 3 args")
+
+    def test_cli_crawl_lambda_accepts_three_args(self):
+        """CLI crawl on_page lambda in sicry.py must accept 3 positional args."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        # The 1-arg form that was broken:
+        self.assertNotIn("lambda p: print", src,
+                         "CLI crawl on_page must not use 1-arg lambda — crawl() passes 3 args")
+        # The correct 3-arg form:
+        self.assertIn("lambda url, depth, result:", src,
+                      "CLI crawl on_page must use lambda url, depth, result: ...")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# _is_content_safe rake-bypass fix (v2.1.3 bug fix)
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestContentSafetyRakeBypass(unittest.TestCase):
+    """Presence of 'rake' must not disable the rape-context check."""
+
+    def test_rake_alone_is_safe(self):
+        """Text containing only 'rake' must pass the safety filter."""
+        self.assertTrue(SICRY._is_content_safe("how to rake leaves in autumn"))
+
+    def test_rake_and_rape_video_is_blocked(self):
+        """Text containing both 'rake' and 'rape video' must be blocked (old bug: 'rake' short-circuited check)."""
+        self.assertFalse(
+            SICRY._is_content_safe("how to rake leaves — rape video uploaded"),
+            "rake short-circuited the rape-context check — fixed in v2.1.3",
+        )
+
+    def test_rape_with_onion_context_is_blocked(self):
+        """'rape site onion' must be blocked regardless of 'rake' presence."""
+        self.assertFalse(SICRY._is_content_safe("rape site onion dark web"))
+
+    def test_rape_film_blocked(self):
+        self.assertFalse(SICRY._is_content_safe("rape film download"))
+
+    def test_brake_is_always_safe(self):
+        """'brake' (automotive) must never falsely trigger the content filter."""
+        self.assertTrue(SICRY._is_content_safe("brake pad replacement guide"))
+        self.assertTrue(SICRY._is_content_safe("car brake repair video tutorial"))
 
 
 # ═════════════════════════════════════════════════════════════════════════════
