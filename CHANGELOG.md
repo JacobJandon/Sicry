@@ -7,6 +7,31 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [2.1.10] — 2026-03-16
+
+### Fixed
+- **[1]** `pipeline.py --watch-check --output-dir`: the handler previously only
+  wrote a file when `new=True` **and** results were non-empty.  Unchanged jobs,
+  first-run jobs with empty results, and any due job that happened to produce an
+  identical fingerprint all silently wrote nothing.  Now **every due job produces
+  a `<job_id>.json` file**, regardless of delta status or result count, so
+  automated pipelines always have a file to process.  A `Saved N file(s)` summary
+  line is printed at the end; when `--output-dir` is given but no jobs are due a
+  note explains why the directory is empty.
+- **[1]** The saved JSON payload is enriched with `"new"` (bool), `"result_count"`,
+  `"mode"`, `"last_run"` (formatted), `"last_run_ts"` (Unix float), and
+  `"next_run"` so downstream consumers no longer need an additional DB lookup.
+
+### Improved
+- **[2]** `OnionClaw/.env.example`: `SICRY_POOL_SIZE` now carries a
+  "Recommended: 2–4 circuits" comment with a concrete example line, matching
+  what was added to the SICRY root `.env.example` in v2.1.8.
+
+### Changed
+- `__version__` bumped to `2.1.10`.
+
+---
+
 ## [2.1.9] — 2026-03-16
 
 ### Fixed

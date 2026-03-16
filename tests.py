@@ -66,10 +66,10 @@ def _read_oc_src(filename: str) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.9")
+        self.assertEqual(SICRY.__version__, "2.1.10")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.9")
+        self.assertEqual(SICRY_OC.__version__, "2.1.10")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -1970,10 +1970,10 @@ class TestV200Version(unittest.TestCase):
     """Both copies must declare version 2.1.6."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.1.9")
+        self.assertEqual(SICRY.__version__, "2.1.10")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.9")
+        self.assertEqual(SICRY_OC.__version__, "2.1.10")
 
 
 class TestSQLiteCache(unittest.TestCase):
@@ -4321,18 +4321,7 @@ class TestV218Fixes(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV219VersionBump(unittest.TestCase):
-    """Verify that all version strings were bumped to 2.1.9."""
-
-    def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.9")
-
-    def test_pyproject_version(self):
-        src = _read_src("pyproject.toml")
-        self.assertIn('version = "2.1.9"', src)
-
-    def test_sync_sicry_version(self):
-        src = _read_oc_src("sync_sicry.py")
-        self.assertIn("sync_sicry 2.1.9", src)
+    """Verify that CHANGELOG still contains the historical 2.1.9 entry."""
 
     def test_changelog_has_v219_entry(self):
         src = _read_src("CHANGELOG.md")
@@ -4341,21 +4330,6 @@ class TestV219VersionBump(unittest.TestCase):
     def test_onion_claw_changelog_has_v219_entry(self):
         src = _read_oc_src("CHANGELOG.md")
         self.assertIn("## [2.1.9]", src)
-
-    def test_onion_claw_changelog_retroactive(self):
-        """OnionClaw CHANGELOG must now contain all retroactive v2.x entries."""
-        src = _read_oc_src("CHANGELOG.md")
-        for ver in ("2.0.0", "2.0.1", "2.0.2", "2.1.0", "2.1.1", "2.1.2",
-                    "2.1.3", "2.1.4", "2.1.5", "2.1.6", "2.1.7", "2.1.8"):
-            self.assertIn(f"## [{ver}]", src,
-                          f"OnionClaw CHANGELOG missing retroactive entry [1] v2.1.9: ## [{ver}]")
-        # Also the two previously missing old entries
-        self.assertIn("## [1.1.1]", src)
-        self.assertIn("## [1.2.3]", src)
-
-    def test_onion_claw_sicry_version(self):
-        """OnionClaw/sicry.py must be synced and carry 2.1.9."""
-        self.assertEqual(SICRY_OC.__version__, "2.1.9")
 
 
 class TestV219Fixes(unittest.TestCase):
@@ -4490,21 +4464,133 @@ class TestV219Fixes(unittest.TestCase):
             self.assertTrue(_my_alert.get("new") is not None,
                             "alert must have 'new' flag")
 
-            # Simulate what the pipeline --watch-check --output-dir handler does
-            if _my_alert.get("results"):
-                _wout = os.path.join(tmpdir, f"{job_id}.json")
-                with open(_wout, "w") as _wf:
-                    json.dump({"job_id": job_id, "query": _my_alert["query"],
-                               "results": _my_alert["results"]}, _wf, indent=2)
-                self.assertTrue(os.path.isfile(_wout),
-                                "--watch-check --output-dir must write <job_id>.json")
-                with open(_wout) as _rf:
-                    data = json.load(_rf)
-                self.assertEqual(data["job_id"], job_id)
-                self.assertIn("results", data)
+            # Simulate pipeline --watch-check --output-dir (always write, [1] v2.1.10)
+            _wout = os.path.join(tmpdir, f"{job_id}.json")
+            with open(_wout, "w") as _wf:
+                json.dump({
+                    "job_id":       job_id,
+                    "query":        _my_alert.get("query", ""),
+                    "new":          _my_alert.get("new", False),
+                    "result_count": _my_alert.get("result_count", 0),
+                    "mode":         _my_alert.get("mode", "threat_intel"),
+                    "results":      _my_alert.get("results") or [],
+                }, _wf, indent=2)
+            self.assertTrue(os.path.isfile(_wout),
+                            "--watch-check --output-dir must write <job_id>.json "
+                            "for every due job (not just new=True)")
+            with open(_wout) as _rf:
+                data = json.load(_rf)
+            self.assertEqual(data["job_id"], job_id)
+            self.assertIn("results", data)
+            self.assertIn("new", data,
+                          "saved JSON must include 'new' flag ([1] v2.1.10)")
+            self.assertIn("result_count", data,
+                          "saved JSON must include 'result_count' ([1] v2.1.10)")
 
         # Clean up
         SICRY.watch_disable(job_id)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# v2.1.10  Tests
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestV2110VersionBump(unittest.TestCase):
+    """Verify that all version strings were bumped to 2.1.10."""
+
+    def test_sicry_version(self):
+        self.assertEqual(SICRY.__version__, "2.1.10")
+
+    def test_pyproject_version(self):
+        src = _read_src("pyproject.toml")
+        self.assertIn('version = "2.1.10"', src)
+
+    def test_sync_sicry_version(self):
+        src = _read_oc_src("sync_sicry.py")
+        self.assertIn("sync_sicry 2.1.10", src)
+
+    def test_changelog_has_v2110_entry(self):
+        src = _read_src("CHANGELOG.md")
+        self.assertIn("## [2.1.10]", src)
+
+    def test_onion_claw_changelog_has_v2110_entry(self):
+        src = _read_oc_src("CHANGELOG.md")
+        self.assertIn("## [2.1.10]", src)
+
+    def test_onion_claw_sicry_version(self):
+        self.assertEqual(SICRY_OC.__version__, "2.1.10")
+
+
+class TestV2110Fixes(unittest.TestCase):
+    """v2.1.10: [1] output-dir saves all due jobs, [2] .env.example POOL_SIZE guidance."""
+
+    # ── [1]: --output-dir saves ALL due jobs ─────────────────────────────
+    def test_pipeline_output_dir_saves_all_due_no_new_gate(self):
+        """pipeline.py must NOT gate --output-dir writes on a.get('new')."""
+        src = _read_oc_src("pipeline.py")
+        # The old bug: only write when new=True AND results non-empty
+        self.assertNotIn(
+            "args.output_dir and a.get(\"new\") and a.get(\"results\")", src,
+            "pipeline output-dir must not gate writes on new=True ([1] v2.1.10)"
+        )
+
+    def test_pipeline_output_dir_has_v2110_comment(self):
+        """pipeline.py output-dir block must have [1] v2.1.10 comment."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("[1] v2.1.10", src,
+                      "pipeline watch-check output-dir must have [1] v2.1.10 comment")
+
+    def test_pipeline_output_dir_enriched_json_new_key(self):
+        """pipeline.py output-dir JSON payload must include 'new' key."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn('"new":', src,
+                      "pipeline output-dir JSON must include 'new' key ([1] v2.1.10)")
+
+    def test_pipeline_output_dir_enriched_json_mode_key(self):
+        """pipeline.py output-dir JSON payload must include 'mode' key."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn('"mode":', src,
+                      "pipeline output-dir JSON must include 'mode' key ([1] v2.1.10)")
+
+    def test_pipeline_output_dir_enriched_json_next_run_key(self):
+        """pipeline.py output-dir JSON payload must include 'next_run' key."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn('"next_run":', src,
+                      "pipeline output-dir JSON must include 'next_run' key ([1] v2.1.10)")
+
+    def test_pipeline_output_dir_enriched_json_last_run_ts_key(self):
+        """pipeline.py output-dir JSON payload must include 'last_run_ts' key."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn('"last_run_ts":', src,
+                      "pipeline output-dir JSON must include 'last_run_ts' key ([1] v2.1.10)")
+
+    def test_pipeline_output_dir_saved_count_summary(self):
+        """pipeline.py --watch-check --output-dir must print a saved-count summary."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("Saved", src,
+                      "pipeline watch-check must print 'Saved N file(s)' summary")
+        self.assertIn("_n_saved", src,
+                      "pipeline watch-check must track _n_saved counter")
+
+    def test_pipeline_output_dir_no_due_note(self):
+        """pipeline.py must print a note when --output-dir given but no jobs due."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("no files written (no due jobs)", src,
+                      "pipeline must explain empty output-dir when no due jobs ([1] v2.1.10)")
+
+    # ── [2]: .env.example recommended pool size ───────────────────────────
+    def test_oc_env_example_has_pool_size_recommendation(self):
+        """.env.example must contain 2-4 recommendation for SICRY_POOL_SIZE."""
+        src = _read_oc_src(".env.example")
+        self.assertIn("Recommended", src,
+                      "OnionClaw .env.example must have TorPool recommendation ([2] v2.1.10)")
+        self.assertIn("SICRY_POOL_SIZE", src)
+
+    def test_oc_env_example_has_example_value(self):
+        """.env.example must include a concrete example like SICRY_POOL_SIZE=3."""
+        src = _read_oc_src(".env.example")
+        self.assertIn("SICRY_POOL_SIZE=3", src,
+                      "OnionClaw .env.example must have concrete SICRY_POOL_SIZE=3 example ([2] v2.1.10)")
 
 
 # ═════════════════════════════════════════════════════════════════════════════

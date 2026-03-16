@@ -4,7 +4,7 @@ build-backend = "setuptools.backends.legacy:build"
 
 [project]
 name = "sicry"
-version = "2.1.9"
+version = "2.1.10"
 description = "Dark-web OSINT library — anonymous search, crawl, and AI analysis over Tor"
 readme = "README.md"
 license = {text = "MIT"}
