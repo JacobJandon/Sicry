@@ -54,10 +54,10 @@ def _run_pipeline(*args):
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.0.2")
+        self.assertEqual(SICRY.__version__, "2.1.0")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.0.2")
+        self.assertEqual(SICRY_OC.__version__, "2.1.0")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -1928,13 +1928,13 @@ class TestSetupChmod(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV200Version(unittest.TestCase):
-    """Both copies must declare version 2.0.2."""
+    """Both copies must declare version 2.1.0."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.0.2")
+        self.assertEqual(SICRY.__version__, "2.1.0")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.0.2")
+        self.assertEqual(SICRY_OC.__version__, "2.1.0")
 
 
 class TestSQLiteCache(unittest.TestCase):
@@ -2744,6 +2744,281 @@ class TestEngineErrorMessages(unittest.TestCase):
         self.assertIsNotNone(m, "_ping() function not found in sicry.py")
         self.assertNotIn("_friendly_error", m.group(0),
                          "BUG-3: _ping() still delegates to _friendly_error — engine errors blame Tor")
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Engine retry / backoff
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestEngineRetryBackoff(unittest.TestCase):
+    """_fetch_engine retries up to 3 attempts on transient errors."""
+
+    def _fake_search_result(self):
+        return [{"title": "T", "url": "http://a.onion/p", "engine": "Ahmia"}]
+
+    def test_retry_constants_in_source(self):
+        """_TRANSIENT_KW must be defined inside _fetch_engine."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn("_TRANSIENT_KW", src, "_TRANSIENT_KW sentinel missing from search()")
+
+    def test_retry_loop_in_source(self):
+        """_fetch_engine body must contain the for-attempt retry loop."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn("for _attempt in range(3)", src,
+                      "retry loop 'for _attempt in range(3)' missing from _fetch_engine")
+
+    def test_backoff_sleep_in_source(self):
+        """Exponential back-off sleep must be present inside _fetch_engine."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn("time.sleep(2 ** _attempt)", src,
+                      "exponential back-off 'time.sleep(2 ** _attempt)' missing")
+
+    def test_transient_keywords_include_timeout(self):
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn('"timed out"', src)
+
+    def test_transient_keywords_include_socks(self):
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn('"SOCKS"', src)
+
+    def test_transient_keywords_include_proxy_error(self):
+        """ProxyError must be in the transient keyword list."""
+        src = open(os.path.join(_HERE, "sicry.py")).read()
+        self.assertIn('"ProxyError"', src)
+
+    def test_search_returns_empty_on_all_failures(self):
+        """search() returns [] gracefully when every engine times out."""
+        with patch("sicry.requests.Session.get", side_effect=Exception("timed out")):
+            results = SICRY.search("test query", _use_cache=False)
+        self.assertIsInstance(results, list)
+
+    def test_non_transient_error_no_extra_retry(self):
+        """Non-transient errors (e.g. parsing) must NOT sleep between attempts."""
+        call_count = {"n": 0}
+
+        def _raise(*a, **kw):
+            call_count["n"] += 1
+            raise ValueError("non-transient parsing error")
+
+        with patch("sicry.requests.Session.get", side_effect=_raise):
+            SICRY.search("test", _use_cache=False)
+        # Each engine gets at most 3 attempts if transient; non-transient breaks
+        # immediately after 1 attempt per engine — total calls = num_engines * 1
+        self.assertLessEqual(call_count["n"], len(SICRY.SEARCH_ENGINES))
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# to_misp() export
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestToMisp(unittest.TestCase):
+    """to_misp() generates a valid MISP 2.4 event dict."""
+
+    _RESULTS = [
+        {"title": "LockBit leak", "url": "http://lock.onion/leak", "engine": "Ahmia", "confidence": 0.91},
+        {"title": "ALPHV data",   "url": "http://alphv.onion/dump", "engine": "Tor66", "confidence": 0.72},
+    ]
+
+    def setUp(self):
+        self._event = SICRY.to_misp(self._RESULTS, query="ransomware hospital")
+
+    def test_to_misp_exists(self):
+        self.assertTrue(callable(SICRY.to_misp))
+
+    def test_returns_dict(self):
+        self.assertIsInstance(self._event, dict)
+
+    def test_has_event_key(self):
+        self.assertIn("Event", self._event)
+
+    def test_event_has_uuid(self):
+        self.assertIn("uuid", self._event["Event"])
+
+    def test_event_has_info(self):
+        info = self._event["Event"]["info"]
+        self.assertIn("ransomware hospital", info)
+
+    def test_event_has_date(self):
+        date = self._event["Event"]["date"]
+        self.assertRegex(date, r"\d{4}-\d{2}-\d{2}")
+
+    def test_event_has_threat_level(self):
+        self.assertIn("threat_level_id", self._event["Event"])
+
+    def test_event_has_attributes(self):
+        attrs = self._event["Event"]["Attribute"]
+        self.assertIsInstance(attrs, list)
+        self.assertGreater(len(attrs), 0)
+
+    def test_url_attributes_present(self):
+        url_attrs = [a for a in self._event["Event"]["Attribute"] if a["type"] == "url"]
+        self.assertEqual(len(url_attrs), 2)
+
+    def test_domain_attributes_present(self):
+        domain_attrs = [a for a in self._event["Event"]["Attribute"]
+                        if a["type"] in ("domain", "hostname")]
+        self.assertGreater(len(domain_attrs), 0)
+
+    def test_confidence_in_comment(self):
+        url_attrs = [a for a in self._event["Event"]["Attribute"] if a["type"] == "url"]
+        self.assertIn("confidence", url_attrs[0]["comment"])
+
+    def test_has_tags(self):
+        tags = self._event["Event"]["Tag"]
+        self.assertIsInstance(tags, list)
+        self.assertGreater(len(tags), 0)
+
+    def test_tlp_amber_tag(self):
+        tag_names = [t["name"] for t in self._event["Event"]["Tag"]]
+        self.assertIn("tlp:amber", tag_names)
+
+    def test_dark_web_tag(self):
+        tag_names = [t["name"] for t in self._event["Event"]["Tag"]]
+        self.assertIn("dark-web", tag_names)
+
+    def test_report_text_embedded(self):
+        event = SICRY.to_misp(self._RESULTS, report_text="full report here")
+        comment_attrs = [a for a in event["Event"]["Attribute"] if a["type"] == "comment"]
+        self.assertGreater(len(comment_attrs), 0)
+        self.assertIn("full report here", comment_attrs[0]["value"])
+
+    def test_query_embedded_as_text_attr(self):
+        text_attrs = [a for a in self._event["Event"]["Attribute"] if a["type"] == "text"]
+        self.assertGreater(len(text_attrs), 0)
+        self.assertIn("ransomware hospital", text_attrs[0]["value"])
+
+    def test_empty_results(self):
+        event = SICRY.to_misp([], query="empty")
+        self.assertIn("Event", event)
+        self.assertIsInstance(event["Event"]["Attribute"], list)
+
+    def test_threat_level_override(self):
+        event = SICRY.to_misp(self._RESULTS, threat_level=1)
+        self.assertEqual(event["Event"]["threat_level_id"], "1")
+
+    def test_distribution_override(self):
+        event = SICRY.to_misp(self._RESULTS, distribution=3)
+        url_attrs = [a for a in event["Event"]["Attribute"] if a["type"] == "url"]
+        self.assertEqual(url_attrs[0]["distribution"], "3")
+
+    def test_json_serialisable(self):
+        import json
+        json.dumps(self._event)   # must not raise
+
+    def test_to_ids_false_for_url(self):
+        url_attrs = [a for a in self._event["Event"]["Attribute"] if a["type"] == "url"]
+        self.assertFalse(url_attrs[0]["to_ids"])
+
+    def test_to_ids_true_for_domain(self):
+        domain_attrs = [a for a in self._event["Event"]["Attribute"]
+                        if a["type"] in ("domain", "hostname")]
+        self.assertTrue(domain_attrs[0]["to_ids"])
+
+    def test_dispatch_to_misp(self):
+        event = SICRY.dispatch("sicry_to_misp", {
+            "results": self._RESULTS,
+            "query": "test dispatch",
+        })
+        self.assertIn("Event", event)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# search_and_crawl()
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestSearchAndCrawl(unittest.TestCase):
+    """search_and_crawl() signature, return structure, and dispatch wiring."""
+
+    def test_exists(self):
+        self.assertTrue(callable(SICRY.search_and_crawl))
+
+    def test_signature(self):
+        import inspect
+        sig = inspect.signature(SICRY.search_and_crawl)
+        params = sig.parameters
+        self.assertIn("query", params)
+        self.assertIn("top_n", params)
+        self.assertIn("max_depth", params)
+        self.assertIn("max_pages", params)
+        self.assertIn("engines", params)
+        self.assertIn("max_results", params)
+        self.assertIn("mode", params)
+        self.assertIn("stay_on_domain", params)
+
+    def test_top_n_default_is_3(self):
+        import inspect
+        sig = inspect.signature(SICRY.search_and_crawl)
+        self.assertEqual(sig.parameters["top_n"].default, 3)
+
+    def test_returns_dict_with_expected_keys(self):
+        _fake_result = [{"title": "T", "url": "http://a.onion/", "engine": "Ahmia", "confidence": 0.5}]
+
+        def mock_search(*a, **kw):
+            return _fake_result
+
+        def mock_crawl(url, **kw):
+            cr = SICRY.CrawlResult(
+                job_id="test", seed_url=url, pages_found=1,
+                links_found=0, entities={}, db_path="/tmp/test.db",
+            )
+            return cr
+
+        with patch.object(SICRY, "search", side_effect=mock_search), \
+             patch.object(SICRY, "crawl", side_effect=mock_crawl):
+            result = SICRY.search_and_crawl("test query", top_n=1)
+
+        self.assertIn("query", result)
+        self.assertIn("search_results", result)
+        self.assertIn("crawls", result)
+
+    def test_query_preserved(self):
+        with patch.object(SICRY, "search", return_value=[]), \
+             patch.object(SICRY, "crawl", return_value=None):
+            result = SICRY.search_and_crawl("my query", top_n=0)
+        self.assertEqual(result["query"], "my query")
+
+    def test_empty_search_returns_empty_crawls(self):
+        with patch.object(SICRY, "search", return_value=[]):
+            result = SICRY.search_and_crawl("no results", top_n=3, _use_cache=False)
+        self.assertEqual(result["crawls"], {})
+
+    def test_crawls_keyed_by_url(self):
+        _fake_result = [{"title": "T", "url": "http://a.onion/", "engine": "Ahmia", "confidence": 0.5}]
+
+        def mock_crawl(url, **kw):
+            return SICRY.CrawlResult(
+                job_id="j", seed_url=url, pages_found=2,
+                links_found=5, entities={}, db_path="/tmp/x.db",
+            )
+
+        with patch.object(SICRY, "search", return_value=_fake_result), \
+             patch.object(SICRY, "crawl", side_effect=mock_crawl):
+            result = SICRY.search_and_crawl("test", top_n=1)
+
+        self.assertIn("http://a.onion/", result["crawls"])
+
+    def test_crawl_failure_recorded(self):
+        _fake_result = [{"title": "T", "url": "http://b.onion/", "engine": "Ahmia", "confidence": 0.5}]
+
+        def mock_crawl_fail(url, **kw):
+            raise RuntimeError("crawl error")
+
+        with patch.object(SICRY, "search", return_value=_fake_result), \
+             patch.object(SICRY, "crawl", side_effect=mock_crawl_fail):
+            result = SICRY.search_and_crawl("test", top_n=1)
+
+        crawl_val = result["crawls"].get("http://b.onion/")
+        self.assertIsNotNone(crawl_val)
+        self.assertIn("error", crawl_val)
+
+    def test_dispatch_search_and_crawl(self):
+        with patch.object(SICRY, "search", return_value=[]):
+            result = SICRY.dispatch("sicry_search_and_crawl", {
+                "query": "dispatch test",
+                "top_n": 0,
+            })
+        self.assertIn("query", result)
+        self.assertEqual(result["query"], "dispatch test")
 
 
 # ═════════════════════════════════════════════════════════════════════════════

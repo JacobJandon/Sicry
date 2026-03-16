@@ -1,0 +1,49 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "sicry"
+version = "2.1.0"
+description = "Dark-web OSINT library — anonymous search, crawl, and AI analysis over Tor"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "JacobJandon", email = "jacobjandon@github.com"}]
+keywords = ["tor", "darkweb", "osint", "onion", "threat-intelligence", "misp"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Internet",
+]
+dependencies = [
+    "requests[socks]>=2.31",
+    "beautifulsoup4>=4.12",
+    "python-dotenv>=1.0",
+    "stem>=1.8",
+]
+
+[project.optional-dependencies]
+mcp  = ["mcp>=1.0"]
+dev  = ["pytest>=8.0"]
+
+[project.urls]
+Homepage   = "https://github.com/JacobJandon/Sicry"
+Repository = "https://github.com/JacobJandon/Sicry"
+Issues     = "https://github.com/JacobJandon/Sicry/issues"
+
+[project.scripts]
+sicry = "sicry:_cli_main"
+
+[tool.setuptools]
+py-modules = ["sicry"]
+
+[tool.pytest.ini_options]
+testpaths = ["."]
