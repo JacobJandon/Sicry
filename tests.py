@@ -49,6 +49,18 @@ def _run_pipeline(*args):
     return r.returncode, r.stdout, r.stderr
 
 
+def _read_src(filename: str = "sicry.py") -> str:
+    """Read a source file from the SICRY root directory, always closing the handle."""
+    with open(os.path.join(_HERE, filename), encoding="utf-8") as _fh:
+        return _fh.read()
+
+
+def _read_oc_src(filename: str) -> str:
+    """Read a source file from the OnionClaw directory, always closing the handle."""
+    with open(os.path.join(_ONION_CLAW, filename), encoding="utf-8") as _fh:
+        return _fh.read()
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # 1. Version
 # ═════════════════════════════════════════════════════════════════════════════
@@ -2691,7 +2703,7 @@ class TestBM25Scoring(unittest.TestCase):
 
     def test_score_rename_in_search_source(self):
         """BUG-2: sicry.py search() must explicitly rename 'score' → 'confidence'."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn("r[\"confidence\"] = r.pop(\"score\")", src,
                       "BUG-2: search() missing score→confidence rename")
 
@@ -2754,20 +2766,20 @@ class TestEngineErrorMessages(unittest.TestCase):
 
     def test_ping_timeout_error_is_engine_specific(self):
         """BUG-3: a timed-out engine must say 'engine timed out', not 'Tor circuit unavailable'."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn("engine timed out (hidden service unreachable or slow)", src,
                       "BUG-3: engine-specific timeout message missing")
 
     def test_ping_socks_error_is_engine_specific(self):
         """BUG-3: SOCKS error inside _ping must say 'engine unreachable', not blame Tor globally."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn("engine unreachable via Tor circuit", src,
                       "BUG-3: engine-specific SOCKS message missing")
 
     def test_ping_does_not_delegate_to_friendly_error(self):
         """BUG-3: _ping() must handle its own exceptions, not route through _friendly_error."""
         import re
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         m = re.search(r"def _ping\(engine.*?(?=\n    def |\nresults_map)", src, re.DOTALL)
         self.assertIsNotNone(m, "_ping() function not found in sicry.py")
         self.assertNotIn("_friendly_error", m.group(0),
@@ -2786,32 +2798,32 @@ class TestEngineRetryBackoff(unittest.TestCase):
 
     def test_retry_constants_in_source(self):
         """_TRANSIENT_KW must be defined inside _fetch_engine."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn("_TRANSIENT_KW", src, "_TRANSIENT_KW sentinel missing from search()")
 
     def test_retry_loop_in_source(self):
         """_fetch_engine body must contain the for-attempt retry loop."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn("for _attempt in range(3)", src,
                       "retry loop 'for _attempt in range(3)' missing from _fetch_engine")
 
     def test_backoff_sleep_in_source(self):
         """Exponential back-off sleep must be present inside _fetch_engine."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn("time.sleep(2 ** _attempt)", src,
                       "exponential back-off 'time.sleep(2 ** _attempt)' missing")
 
     def test_transient_keywords_include_timeout(self):
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn('"timed out"', src)
 
     def test_transient_keywords_include_socks(self):
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn('"SOCKS"', src)
 
     def test_transient_keywords_include_proxy_error(self):
         """ProxyError must be in the transient keyword list."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertIn('"ProxyError"', src)
 
     def test_search_returns_empty_on_all_failures(self):
@@ -3155,7 +3167,7 @@ class TestCLIPoolStartFix(unittest.TestCase):
 
     def test_pool_start_source_uses_torpool_not_get_pool(self):
         """CLI pool-start handler must call TorPool(size=...) not _get_pool(size=...)."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         # The buggy pattern is _get_pool(size=...) — must not appear
         self.assertNotIn("_get_pool(size=", src,
                          "_get_pool() is not designed to take parameters — "
@@ -3166,7 +3178,7 @@ class TestTorPreCheckInScripts(unittest.TestCase):
     """Scripts must call _tor_port_open() before making Tor network requests."""
 
     def _script_src(self, name: str) -> str:
-        return open(os.path.join(_ONION_CLAW, name)).read()
+        return _read_oc_src(name)
 
     def test_check_engines_has_tor_precheck(self):
         src = self._script_src("check_engines.py")
@@ -3241,7 +3253,7 @@ class TestCLIWatchListKeyFix(unittest.TestCase):
 
     def test_cli_watch_list_source_uses_j_id(self):
         """CLI watch list handler in sicry.py must use j['id'], not j['job_id']."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertNotIn("j['job_id']", src,
                          "CLI watch list handler must use j['id'] not j['job_id']")
         # Find the watch list block and confirm j['id'] is used there
@@ -3274,7 +3286,7 @@ class TestCLIWatchCheckKeyFix(unittest.TestCase):
 
     def test_cli_watch_check_source_uses_result_count(self):
         """CLI watch check handler must read a.get('result_count'), not a.get('new_count')."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         self.assertNotIn("new_count", src,
                          "CLI watch check handler must use 'result_count', not 'new_count'")
         self.assertIn("result_count", src,
@@ -3322,7 +3334,7 @@ class TestCLICrawlOnPageArity(unittest.TestCase):
 
     def test_cli_crawl_lambda_accepts_three_args(self):
         """CLI crawl on_page lambda in sicry.py must accept 3 positional args."""
-        src = open(os.path.join(_HERE, "sicry.py")).read()
+        src = _read_src()
         # The 1-arg form that was broken:
         self.assertNotIn("lambda p: print", src,
                          "CLI crawl on_page must not use 1-arg lambda — crawl() passes 3 args")
