@@ -7,6 +7,37 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [2.1.6] — 2026-03-16
+
+### Fixed
+- **BUG-1** `score_results()` now sets **both** `"score"` and `"confidence"` keys
+  (`r_copy["confidence"] = r_copy["score"] = …`).  Pipeline re-score after scrape
+  (step 6) now updates the value shown in the console and in all export formats.
+- **BUG-2** `crawl()` `links_found` no longer filters to `.onion`-only hrefs.  The
+  capture block now records all outbound links (clearnet and onion alike); the crawl
+  queue still correctly follows only `.onion` URLs.  Shallow `.onion` pages that link
+  exclusively to clearnet URLs now return a non-empty `links_found`.
+- **UX-4** `_DB.engine_reliability()` returns `None` instead of `1.0` when no engine
+  health history exists.  `engine_reliability_scores()` return type updated to
+  `dict[str, float | None]`.  `--engine-stats` prints `(no data)` for unchecked
+  engines and sorts them below engines with real history.
+
+### Improved
+- **UX-2** `--watch-check` prints the top-5 result titles and URLs inline for every
+  job whose status changed to NEW, so the operator can see what triggered the alert
+  at a glance.  `watch_check()` alert dicts now include `last_run`, `interval_hours`,
+  and `mode` keys so the pipeline can compute the next scheduled time.
+- **UX-3** `--interactive` number-based fetch now runs `analyze_nollm()` on the
+  fetched page text and prints an **Entities / Keywords** block after the page
+  content, giving actionable intel without a separate analysis step.
+- **IMPROVE-1** Pipeline step-1 output now includes a **TorPool** line when
+  `SICRY_POOL_SIZE > 0`, showing the number of circuits and the socks-port range so
+  operators can confirm multi-circuit mode is active.
+- **IMPROVE-7** `--watch-check --output-dir DIR` saves each triggered (NEW) alert as
+  `DIR/<job_id>.json`, enabling automated downstream processing of watch results.
+
+---
+
 ## [2.1.5] — 2026-03-16
 
 ### Fixed

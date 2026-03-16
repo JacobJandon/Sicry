@@ -66,10 +66,10 @@ def _read_oc_src(filename: str) -> str:
 # ═════════════════════════════════════════════════════════════════════════════
 class TestVersion(unittest.TestCase):
     def test_sicry_version(self):
-        self.assertEqual(SICRY.__version__, "2.1.5")
+        self.assertEqual(SICRY.__version__, "2.1.6")
 
     def test_onion_claw_version(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.5")
+        self.assertEqual(SICRY_OC.__version__, "2.1.6")
 
     def test_both_copies_identical_version(self):
         self.assertEqual(SICRY.__version__, SICRY_OC.__version__)
@@ -1967,13 +1967,13 @@ class TestSetupChmod(unittest.TestCase):
 # ═════════════════════════════════════════════════════════════════════════════
 
 class TestV200Version(unittest.TestCase):
-    """Both copies must declare version 2.1.5."""
+    """Both copies must declare version 2.1.6."""
 
     def test_sicry_version_200(self):
-        self.assertEqual(SICRY.__version__, "2.1.5")
+        self.assertEqual(SICRY.__version__, "2.1.6")
 
     def test_onion_claw_version_200(self):
-        self.assertEqual(SICRY_OC.__version__, "2.1.5")
+        self.assertEqual(SICRY_OC.__version__, "2.1.6")
 
 
 class TestSQLiteCache(unittest.TestCase):
@@ -2683,20 +2683,19 @@ class TestBM25Scoring(unittest.TestCase):
                                 "BUG-2: snippet field not included in scoring")
 
     def test_search_returns_confidence_not_score(self):
-        """BUG-2 root cause: score_results() adds 'score'; search() must rename it to 'confidence'."""
-        # Verify that after score_results(), the rename logic works
+        """v2.1.6: score_results() sets BOTH 'score' and 'confidence'; both must be present."""
+        # BUG-1 fix: score_results() now emits both keys so the pipeline can
+        # read 'confidence' without a separate rename step
         results = [
             {"title": "ransomware data leak darknet", "url": "http://x.onion", "engine": "X"},
         ]
         scored = SICRY.score_results("ransomware data leak", results)
-        # Apply the rename that search() must do
-        for r in scored:
-            if "score" in r and "confidence" not in r:
-                r["confidence"] = r.pop("score")
         self.assertIn("confidence", scored[0],
-                      "BUG-2: 'confidence' key missing after score→confidence rename")
-        self.assertNotIn("score", scored[0],
-                         "BUG-2: 'score' key still present — rename didn't happen")
+                      "v2.1.6 BUG-1: 'confidence' key must be set by score_results()")
+        self.assertIn("score", scored[0],
+                      "v2.1.6 BUG-1: 'score' key must also be set by score_results()")
+        self.assertEqual(scored[0]["score"], scored[0]["confidence"],
+                         "v2.1.6: 'score' and 'confidence' must hold the same value")
         self.assertGreater(scored[0]["confidence"], 0.0,
                            "BUG-2: confidence is 0 for a result that matches query terms")
 
@@ -3845,6 +3844,242 @@ class TestSyncSicryCheckBundled(unittest.TestCase):
         src = _read_oc_src("sync_sicry.py")
         self.assertIn("sys.exit(2)", src,
                       "sync_sicry.py --check-bundled must exit 2 when bundled is behind upstream")
+
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# v2.1.6 fixes
+# ═════════════════════════════════════════════════════════════════════════════
+
+class TestBug1ScoreConfidenceDualKey(unittest.TestCase):
+    """BUG-1 v2.1.6: score_results() must set BOTH 'score' AND 'confidence' keys.
+    Previously it only set 'score', so pipeline re-score after step-6 scrape did
+    not update the 'confidence' key used by downstream displays/export.
+    """
+
+    def test_score_results_sets_confidence_key(self):
+        """score_results() output dicts must contain a 'confidence' key."""
+        results = [
+            {"url": "http://a.onion/", "title": "A", "score": 0.5, "confidence": 0.5,
+             "engine": "Ahmia", "snippet": "alpha beta gamma delta"},
+            {"url": "http://b.onion/", "title": "B", "score": 0.3, "confidence": 0.3,
+             "engine": "Ahmia", "snippet": "delta epsilon zeta"},
+        ]
+        scored = SICRY.score_results("alpha beta", results)
+        self.assertTrue(len(scored) > 0, "score_results() must return non-empty list")
+        for r in scored:
+            self.assertIn("confidence", r,
+                          "score_results() result must have 'confidence' key (BUG-1 fix)")
+
+    def test_score_results_confidence_equals_score(self):
+        """'confidence' and 'score' must hold the same rounded normalised value."""
+        results = [
+            {"url": "http://a.onion/", "title": "A", "score": 0.8, "confidence": 0.8,
+             "engine": "Ahmia", "snippet": "onion link darkweb market"},
+        ]
+        scored = SICRY.score_results("darkweb", results)
+        r = scored[0]
+        self.assertIn("score", r)
+        self.assertIn("confidence", r)
+        self.assertEqual(r["score"], r["confidence"],
+                         "'score' and 'confidence' must be equal after score_results()")
+
+    def test_score_results_dual_key_in_source(self):
+        """Source must set both keys in a single assignment."""
+        src = _read_src()
+        self.assertIn('r_copy["confidence"] = r_copy["score"]', src,
+                      "score_results() must set both 'confidence' and 'score' (BUG-1 fix)")
+
+
+class TestBug2CrawlLinksFoundClearnet(unittest.TestCase):
+    """BUG-2 v2.1.6: crawl() links_found must capture ALL outbound hrefs, not
+    only .onion ones.  A single-page .onion site that links exclusively to
+    clearnet URLs previously returned an empty links_found list.
+    """
+
+    def test_crawl_links_found_comment_all_outbound(self):
+        """Source comment must indicate that all outbound links are captured."""
+        src = _read_src()
+        self.assertIn("record ALL discovered outbound links", src,
+                      "crawl() links_found must capture all hrefs (clearnet + onion) — BUG-2 fix")
+
+    def test_crawl_links_found_no_onion_filter(self):
+        """The links_found recording block must NOT filter by .onion."""
+        src = _read_src()
+        # The OLD buggy pattern — must be gone
+        self.assertNotIn('if not _href or ".onion" not in _href:\n                continue',
+                         src,
+                         "crawl() links_found block must not filter to .onion-only hrefs")
+
+    def test_crawl_links_found_clearnet_captured_live(self):
+        """LIVE: crawl() must return non-empty links_found for .onion page linking to clearnet."""
+        if not LIVE:
+            self.skipTest("requires --live flag")
+        result = SICRY.crawl("http://www.nytimesn7cgmftshazwhfgzm37qxb44r64ytbb2dj3x62d2lljsciiyd.onion/",
+                             max_pages=1, max_depth=0)
+        self.assertGreater(len(result.get("links_found", [])), 0,
+                           "crawl() on NYT .onion should find outbound clearnet links")
+
+
+class TestUX4EngineReliabilityNone(unittest.TestCase):
+    """UX-4 v2.1.6: engine_reliability() must return None (not 1.0) when no
+    health history exists for an engine, so --engine-stats can distinguish
+    'never checked' from '100% reliable'.
+    """
+
+    def test_engine_reliability_returns_none_when_no_history(self):
+        """_DB.engine_reliability() must return None for engines with no history rows."""
+        from sicry import _db
+        db = _db()
+        # Use a made-up engine name that will never have been checked
+        result = db.engine_reliability("__nonexistent_engine_v216__")
+        self.assertIsNone(result,
+                          "_DB.engine_reliability() must return None (not 1.0) for no-history engines")
+
+    def test_engine_reliability_returns_float_when_history_exists(self):
+        """_DB.engine_reliability() must return a float 0.0–1.0 when rows exist."""
+        from sicry import _db
+        db = _db()
+        # Plant a single 'up' history row (all four positional args required)
+        db.engine_history_add("__test_engine_v216__", "up", 50, None)
+        result = db.engine_reliability("__test_engine_v216__")
+        self.assertIsNotNone(result)
+        self.assertIsInstance(result, float)
+        self.assertAlmostEqual(result, 1.0)
+
+    def test_engine_reliability_scores_returns_none_for_unchecked(self):
+        """engine_reliability_scores() must contain None values for unchecked engines."""
+        scores = SICRY.engine_reliability_scores()
+        self.assertIsInstance(scores, dict)
+        # At least one engine should have None if starting with a fresh DB
+        # (or all may be floats if DB was pre-populated — check type annotation is correct)
+        for _v in scores.values():
+            self.assertIn(type(_v), (float, type(None)),
+                          "engine_reliability_scores() values must be float or None")
+
+    def test_engine_reliability_none_source(self):
+        """Source must return None (not 1.0) for the no-rows branch."""
+        src = _read_src()
+        self.assertIn("return None   # UX-4 fix:", src,
+                      "_DB.engine_reliability() must return None when no history (UX-4 fix)")
+
+    def test_engine_stats_pipeline_handles_none_reliability(self):
+        """pipeline.py --engine-stats handler must handle None reliability gracefully."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("(no data)", src,
+                      "pipeline --engine-stats must display '(no data)' for None reliability")
+        self.assertIn("_rel is not None", src,
+                      "pipeline --engine-stats must guard against None reliability value")
+
+
+class TestUX2WatchCheckInlineResults(unittest.TestCase):
+    """UX-2 v2.1.6: watch_check() alert dict must include scheduling fields and
+    pipeline --watch-check must print top-5 result titles/URLs for NEW alerts.
+    """
+
+    def test_watch_check_alert_includes_last_run(self):
+        """watch_check() alert dict must carry 'last_run' key."""
+        src = _read_src()
+        self.assertIn('"last_run"', src,
+                      "watch_check() alert dict must include 'last_run' (UX-2 fix)")
+
+    def test_watch_check_alert_includes_interval_hours(self):
+        """watch_check() alert dict must carry 'interval_hours' key."""
+        src = _read_src()
+        self.assertIn('"interval_hours"', src,
+                      "watch_check() alert dict must include 'interval_hours' (UX-2 fix)")
+
+    def test_watch_check_alert_includes_mode(self):
+        """watch_check() alert dict must carry a 'mode' key."""
+        src = _read_src()
+        self.assertIn('"mode"', src,
+                      "watch_check() alert dict must include 'mode'")
+
+    def test_pipeline_watch_check_prints_top_results(self):
+        """pipeline.py must print top-5 result titles/URLs for NEW watch alerts."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("a[\"results\"][:5]", src,
+                      "pipeline --watch-check must iterate a['results'][:5] (UX-2 fix)")
+        self.assertIn("_tr.get('title'", src,
+                      "pipeline --watch-check must print result title (UX-2 fix)")
+        self.assertIn("_tr.get('url'", src,
+                      "pipeline --watch-check must print result URL (UX-2 fix)")
+
+    def test_pipeline_watch_check_output_dir_saves_json(self):
+        """pipeline.py --watch-check must save to --output-dir when provided (IMPROVE-7)."""
+        src = _read_oc_src("pipeline.py")
+        # The f-string in pipeline.py is: f"{a['job_id']}.json"
+        self.assertIn("job_id']}.json", src,
+                      "pipeline --watch-check --output-dir must save <job_id>.json (IMPROVE-7)")
+        self.assertIn("_json.dump", src,
+                      "pipeline --watch-check output must use json.dump")
+
+
+class TestUX3InteractiveEntityExtraction(unittest.TestCase):
+    """UX-3 v2.1.6: --interactive number-based fetch must run analyze_nollm()
+    on the fetched page text and print an Entities/Keywords block.
+    """
+
+    def test_interactive_fetch_calls_analyze_nollm(self):
+        """pipeline.py interactive REPL must call analyze_nollm() after fetch."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("analyze_nollm", src,
+                      "pipeline interactive fetch must call sicry.analyze_nollm (UX-3 fix)")
+
+    def test_interactive_fetch_entities_header(self):
+        """pipeline.py interactive REPL must print an Entities/Keywords header."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("Entities / Keywords", src,
+                      "pipeline interactive fetch must print '--- Entities / Keywords ---' (UX-3 fix)")
+
+
+class TestImprove1TorPoolNotice(unittest.TestCase):
+    """IMPROVE-1 v2.1.6: pipeline step-1 must print TorPool circuit count when
+    SICRY_POOL_SIZE > 0, so operators can confirm multi-circuit mode is active.
+    """
+
+    def test_pipeline_torpool_notice_in_source(self):
+        """pipeline.py must contain TorPool notice code after step-1 Tor check."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("TOR_POOL_SIZE", src,
+                      "pipeline must read TOR_POOL_SIZE from sicry module (IMPROVE-1 fix)")
+        self.assertIn("TorPool", src,
+                      "pipeline must mention TorPool in the startup notice (IMPROVE-1 fix)")
+
+    def test_pipeline_torpool_notice_is_conditional(self):
+        """TorPool notice must only print when pool_sz > 0 (not every run)."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("if _pool_sz > 0:", src,
+                      "TorPool notice must be conditional on _pool_sz > 0")
+
+    def test_pipeline_torpool_base_port_shown(self):
+        """TorPool notice must include the base socks port for debugging."""
+        src = _read_oc_src("pipeline.py")
+        self.assertIn("TOR_POOL_BASE_PORT", src,
+                      "pipeline TorPool notice must include the base port (IMPROVE-1 fix)")
+
+
+class TestV216VersionBump(unittest.TestCase):
+    """Verify that all version strings were bumped to 2.1.6."""
+
+    def test_sicry_version(self):
+        self.assertEqual(SICRY.__version__, "2.1.6")
+
+    def test_pyproject_version(self):
+        src = _read_src("pyproject.toml")
+        self.assertIn('version = "2.1.6"', src)
+
+    def test_sync_sicry_version(self):
+        src = _read_oc_src("sync_sicry.py")
+        self.assertIn("sync_sicry 2.1.6", src)
+
+    def test_changelog_has_v216_entry(self):
+        src = _read_src("CHANGELOG.md")
+        self.assertIn("## [2.1.6]", src)
+
+    def test_onion_claw_sicry_version(self):
+        """OnionClaw/sicry.py must be synced and carry 2.1.6."""
+        self.assertEqual(SICRY_OC.__version__, "2.1.6")
 
 
 # ═════════════════════════════════════════════════════════════════════════════

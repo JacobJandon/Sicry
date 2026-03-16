@@ -2,7 +2,7 @@
 # Copyright (c) 2026 JacobJandon — https://github.com/JacobJandon/Sicry
 from __future__ import annotations
 
-__version__ = "2.1.5"
+__version__ = "2.1.6"
 
 """
 SICRY — Tor/Onion Network Access Layer for AI Agents
@@ -297,11 +297,13 @@ class _DB:
         ).fetchall()
         return [dict(r) for r in rows]
 
-    def engine_reliability(self, engine: str, window: int = 5) -> float:
-        """Fraction of last `window` checks where engine was up. Returns 1.0 if no history."""
+    def engine_reliability(self, engine: str, window: int = 5) -> float | None:
+        """Fraction of last `window` checks where engine was up.
+        Returns ``None`` when no history exists (engine never checked this session).
+        """
         rows = self.engine_history_get(engine, window)
         if not rows:
-            return 1.0
+            return None   # UX-4 fix: distinguish "never checked" from "100% up"
         up = sum(1 for r in rows if r["status"] == "up")
         return up / len(rows)
 
@@ -838,7 +840,9 @@ def score_results(query: str, results: list[dict], texts: dict[str, str] | None 
         # Normalise to 0-1 loosely
         norm_score = min(score / (len(q_terms) * 2 + 1), 1.0)
         r_copy = dict(result)
-        r_copy["score"] = round(norm_score, 4)
+        # BUG-1 v2.1.5: set both keys so pipeline displays (which read 'confidence')
+        # reflect the post-scrape re-score, and library callers get both.
+        r_copy["confidence"] = r_copy["score"] = round(norm_score, 4)
         scored.append((norm_score, r_copy))
 
     scored.sort(key=lambda t: t[0], reverse=True)
@@ -1542,14 +1546,15 @@ def engine_health_history(engine_name: str, n: int = 5) -> list[dict]:
     return _db().engine_history_get(engine_name, n)
 
 
-def engine_reliability_scores() -> dict[str, float]:
+def engine_reliability_scores() -> dict[str, float | None]:
     """Return a dict of engine_name → reliability (fraction up over last 5 checks).
-    Engines with no history default to 1.0.
+    Engines with no history return ``None`` (not 1.0) so callers can distinguish
+    "unknown" from "perfect".
 
     Example::
 
         >>> sicry.engine_reliability_scores()
-        {"Ahmia": 1.0, "Excavator": 0.6, "Torland": 0.2, ...}
+        {"Ahmia": 1.0, "Excavator": 0.6, "Torland": None, ...}
     """
     return {e["name"]: _db().engine_reliability(e["name"]) for e in SEARCH_ENGINES}
 
@@ -2246,11 +2251,16 @@ def watch_check(
             is_new = fp != job.get("fingerprint")
             _db().watch_update(job["id"], fp, time.time())
             alert = {
-                "job_id":       job["id"],
-                "query":        job["query"],
-                "new":          is_new,
-                "result_count": len(results),
-                "results":      results,
+                "job_id":        job["id"],
+                "query":         job["query"],
+                "new":           is_new,
+                "result_count":  len(results),
+                "results":       results,
+                # UX-2/IMPROVE-7: include scheduling info so pipeline can display
+                # timestamps and save outputs without a separate DB lookup
+                "last_run":      job.get("last_run"),
+                "interval_hours": job.get("interval_hours", 6),
+                "mode":          job.get("mode", "threat_intel"),
             }
             alerts.append(alert)
             if is_new and callback and callable(callback):
@@ -2409,11 +2419,13 @@ def crawl(
             except Exception:
                 pass
 
-        # BUG-2 fix: record ALL discovered .onion links for links_found regardless
-        # of crawl-queue filters (depth limit, domain scope, already-visited).
+        # BUG-2 fix: record ALL discovered outbound links for links_found, regardless
+        # of crawl-queue filters (depth limit, domain scope, already-visited, link type).
+        # Unlike the crawl queue (which only follows .onion links), links_found captures
+        # clearnet links too — a single-page .onion site may link only to clearnet URLs.
         for _lk in result.get("links", []):
             _href = _lk.get("href", "")
-            if not _href or ".onion" not in _href:
+            if not _href:
                 continue
             _clean_href = _href.rstrip("/")
             with _lock:
