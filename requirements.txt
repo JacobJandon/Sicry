@@ -3,7 +3,7 @@ requests[socks]>=2.31.0
 beautifulsoup4>=4.12.0
 python-dotenv>=1.0.0
 stem>=1.8.2
-lxml>=5.0.0
+lxml>=6.1.0
 
 # LLM providers — install only what you use
 openai>=1.30.0
