@@ -7,6 +7,25 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [2.2.0] — 2026-05-26
+
+### Changed
+- **MAJOR: License Migration** — Apache 2.0 (from MIT)
+  - Updated SPDX headers in all Python files: `Apache-2.0`
+  - Updated all README.md license badges and statements
+  - Created/updated NOTICE files across all projects (SICRY, OnionClaw, ClawHub)
+  - Updated `onionclaw_upload/SKILL.md` metadata
+
+- **Infrastructure:**
+  - Added NOTICE file to SICRY root (was missing, now includes trademark & Robin attribution)
+  - OnionClaw NOTICE updated with Apache 2.0 license statement for SICRY™ integration
+  - All LICENSE files now point to Apache 2.0 full text
+
+### No Code Changes
+- v2.1.13 functionality remains unchanged — this is purely a license & legal framework update
+
+---
+
 ## [2.1.13] — 2026-03-16
 
 ### Fixed
