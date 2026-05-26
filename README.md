@@ -1,6 +1,6 @@
 # SICRY™ — Tor/Onion Network Access Layer for AI Agents
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/JacobJandon/Sicry/blob/main/LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/JacobJandon/Sicry/blob/main/LICENSE)
 [![CI](https://github.com/JacobJandon/Sicry/actions/workflows/ci.yml/badge.svg)](https://github.com/JacobJandon/Sicry/actions/workflows/ci.yml)
 
 **by JacobJandon** &nbsp;·&nbsp; [github.com/JacobJandon/Sicry](https://github.com/JacobJandon/Sicry)
@@ -1084,7 +1084,7 @@ SICRY™ suppresses urllib3 and all stem sub-loggers (`stem`, `stem.control`, `s
 
 ## License
 
-MIT License — Copyright (c) 2026 JacobJandon
+Apache License 2.0 — Copyright (c) 2026 JacobJandon
 
 See [LICENSE](LICENSE) for full text.
 
