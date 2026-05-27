@@ -1,3 +1,0 @@
-# SICRY TEST
-
-test content
