@@ -2,7 +2,7 @@
 # Copyright (c) 2026 JacobJandon — https://github.com/JacobJandon/Sicry
 from __future__ import annotations
 
-__version__ = "2.1.13"
+__version__ = "2.3.0"
 
 """
 SICRY — Tor/Onion Network Access Layer for AI Agents

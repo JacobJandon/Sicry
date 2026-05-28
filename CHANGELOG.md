@@ -7,6 +7,80 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [2.3.0] — 2026-05-28
+
+### Added
+- **NEW: Quality Improvements** — Focus on precision over quantity
+  - **Result Deduplication** — Auto-removes exact URL matches and domain mirrors
+    - `_deduplicate_results()`: Removes <80% similar titles on same domain
+    - Improves result diversity and relevance
+  - **Semantic Re-Ranking** — LLM-powered result scoring
+    - `_rank_results_semantic()`: Re-rank top-20 results by LLM-scored relevance  
+    - Optional (commented by default); enable for high-precision investigations
+    - Supports all 10 LLM providers
+  
+- **NEW: 4 Additional LLM Providers** (10 total)
+  - **Together.ai** — `LLM_PROVIDER=together` (100+ open-source models)
+    - Config: `TOGETHER_API_KEY`, `TOGETHER_MODEL`
+    - Recommended: `meta-llama/Llama-3-70b-chat-hf`
+  - **Mistral** — `LLM_PROVIDER=mistral` (native Mistral API)
+    - Config: `MISTRAL_API_KEY`, `MISTRAL_MODEL`
+    - Recommended: `mistral-large`, `mistral-small`
+  - **Perplexity** — `LLM_PROVIDER=perplexity` (web-aware LLM)
+    - Config: `PERPLEXITY_API_KEY`, `PERPLEXITY_MODEL`
+    - Recommended: `llama-3.1-70b-instruct`
+  - **Replicate** — `LLM_PROVIDER=replicate` (serverless model hosting)
+    - Config: `REPLICATE_API_KEY`, `REPLICATE_VERSION`
+    - Supports any replicate-hosted model
+
+- **NEW: Documentation & Examples** (v2.3.0)
+  - `tutorial_v230.ipynb` — Comprehensive Jupyter notebook covering all v2.3.0 features
+    - 12 sections: setup, engine health, search, dedup, semantic ranking, LLM providers, OSINT workflows, scraping, LangChain integration, summary, env setup, pro tips
+  - `examples_crewai.py` — Multi-agent dark web investigation with CrewAI
+    - Researcher + Analyzer + Reporter agents
+    - Full workflow for automated threat intel gathering
+  - `examples_langchain.py` — LangChain ReAct agent with SICRY tools
+    - Three tools: search_dark_web, analyze_results, check_engine_health
+    - Multi-step reasoning loops for OSINT
+  - Updated docstrings in `sicry.py` to reflect new functions
+
+### Changed
+- **Search Pipeline** — Integrated deduplication + optional LLM ranking
+  - `search()` now calls `_deduplicate_results()` before scoring
+  - Results are deduped by URL + domain similarity (default, always on)
+  - Optional semantic re-ranking requires uncommenting one line
+- **LLM Provider Error Messages** — Better guidance on missing API keys
+  - Each provider shows which env var is required
+  - Fallback to `LLM_PROVIDER=ollama` suggested in all error messages
+- **Documentation** — Enhanced `.env` example with all 10 LLM providers
+
+### Technical Details
+- **_deduplicate_results()**
+  - Input: raw search results list
+  - Process: tracks seen URLs + domain+title pairs
+  - Output: deduplicated list, sorted by confidence (highest first)
+  - Performance: O(n) iteration, negligible overhead
+
+- **_rank_results_semantic()**
+  - Input: query string + top-20 results
+  - Process: formats for LLM, scores each result 0.0-1.0
+  - Output: re-scored results, sorted by LLM confidence
+  - Latency: ~5–15s (depending on LLM provider)
+  - Cost: ~10-50 tokens per result (call your LLM provider)
+  - Recommended: use only for final high-precision sweeps
+
+- **_similarity_score()**
+  - Jaccard token-based similarity
+  - Returns: 0.0–1.0 (1.0 = identical, 0.0 = no overlap)
+  - Used by dedup to detect mirrors
+
+### No Breaking Changes
+- `search()` signature unchanged; dedup is internal
+- Semantic ranking is opt-in (commented by default)
+- All v2.1.x API calls remain 100% compatible
+
+---
+
 ## [2.2.0] — 2026-05-26
 
 ### Changed
