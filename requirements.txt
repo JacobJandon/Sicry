@@ -6,7 +6,7 @@ stem>=1.8.2
 lxml>=5.0.0
 
 # LLM providers — install only what you use
-openai>=1.30.0
+openai>=2.32.0
 anthropic>=0.28.0
 google-generativeai>=0.7.0
 
