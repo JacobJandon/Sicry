@@ -7,6 +7,18 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [2.3.1] — 2026-10-26
+
+### Fixed
+- **v2.3.0 shipped without its headline code.** The 2.3.0 release changed only the version string
+  in `sicry.py`; `_deduplicate_results()`, `_similarity_score()` and `_rank_results_semantic()`
+  existed only in OnionClaw's bundled copy. They are now in `sicry.py`, and `search()` deduplicates
+  results before scoring, as the 2.3.0 notes described.
+- **Torgle engine never resolved** — its .onion host contained a stray space.
+- **TorNet engine removed** — its host was 57 characters (a v3 onion address is 56), so it could
+  never resolve. Removed from the engine list, `tools.json` and the README pending a verified address.
+- Engine count corrected from 18 to 17 throughout the docs and tool schemas.
+
 ## [2.3.0] — 2026-05-28
 
 ### Added
