@@ -54,7 +54,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, TorNet, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 18."
+            "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 17."
           }
         },
         "required": [
@@ -101,7 +101,7 @@
     },
     {
       "name": "sicry_check_engines",
-      "description": "Ping all 18 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
+      "description": "Ping all 17 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
       "input_schema": {
         "type": "object",
         "properties": {
@@ -181,7 +181,7 @@
               "items": {
                 "type": "string"
               },
-              "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, TorNet, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 18."
+              "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 17."
             }
           },
           "required": [
@@ -234,7 +234,7 @@
       "type": "function",
       "function": {
         "name": "sicry_check_engines",
-        "description": "Ping all 18 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
+        "description": "Ping all 17 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -304,7 +304,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, TorNet, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 18."
+            "description": "Optional: limit to specific engines by name. Available: Ahmia, OnionLand, Torgle, Amnesia, Kaizer, Anima, Tornado, Torland, FindTor, Excavator, Onionway, Tor66, OSS, Torgol, TheDeepSearches, DuckDuckGo-Tor, Ahmia-clearnet. Omit to query all 17."
           }
         },
         "required": [
@@ -351,7 +351,7 @@
     },
     {
       "name": "sicry_check_engines",
-      "description": "Ping all 18 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
+      "description": "Ping all 17 dark web search engines via Tor and return per-engine status with latency in ms. Use this to find out which engines are alive before running a search, or to diagnose slow queries. Robin health-check pattern.",
       "parameters": {
         "type": "object",
         "properties": {

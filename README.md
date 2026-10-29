@@ -7,7 +7,7 @@
 
 One Python file. Drop it into any project and your AI agent gets full access to the Tor/.onion dark web — the same clean tool interface agents use for the regular internet, just now for hidden services.
 
-Robin's complete search engine catalogue (18 engines) and OSINT pipeline are baked in directly. No Robin install needed. No extra processes. No config beyond a `.env` file.
+Robin's complete search engine catalogue (17 engines) and OSINT pipeline are baked in directly. No Robin install needed. No extra processes. No config beyond a `.env` file.
 
 ```
 pip install requests[socks] beautifulsoup4 python-dotenv stem
@@ -29,7 +29,7 @@ python sicry.py check  # → CONNECTED via Tor  |  exit IP: 185.220.101.5
 7. [CLI reference](#cli-reference)
 8. [The full OSINT pipeline](#the-full-osint-pipeline)
 9. [Analysis modes](#analysis-modes)
-10. [18 search engines](#18-search-engines)
+10. [17 search engines](#17-search-engines)
 11. [Environment variables](#environment-variables)
 12. [Tor setup](#tor-setup)
 13. [Architecture](#architecture)
@@ -47,9 +47,9 @@ SICRY™ gives AI agents exactly 6 tools — the same 6 they already know how to
 | `sicry_check_tor` | health check | Verify Tor is active, get exit IP |
 | `sicry_renew_identity` | reset session | Rotate circuit, get new exit node |
 | `sicry_fetch` | `fetch_url()` / `browser_read_page()` | Read any URL or `.onion` via Tor |
-| `sicry_search` | `web_search()` / `brave_search()` | Query 18 dark web search engines |
+| `sicry_search` | `web_search()` / `brave_search()` | Query 17 dark web search engines |
 | `sicry_ask` | `analyze()` / `summarize()` | LLM OSINT report from raw content |
-| `sicry_check_engines` | ping / health check | Latency + status for all 18 engines |
+| `sicry_check_engines` | ping / health check | Latency + status for all 17 engines |
 
 Plus three quality-improvement helpers (Robin patterns, call directly):
 
@@ -248,10 +248,10 @@ r = sicry.fetch("http://somemarket.onion/listings")
 
 ### `search(query, engines=None, max_results=20, max_workers=8) → list[dict]`
 
-Search across 18 dark web search engines simultaneously.
+Search across 17 dark web search engines simultaneously.
 
 ```python
-# All 18 engines in parallel
+# All 17 engines in parallel
 results = sicry.search("leaked database credentials")
 # [{"title": "...", "url": "http://...onion/...", "engine": "Ahmia"}, ...]
 
@@ -360,7 +360,7 @@ report = sicry.ask(
 
 ### `check_search_engines(max_workers=8) → list[dict]`
 
-Ping all 18 engines via Tor and return per-engine status and latency.
+Ping all 17 engines via Tor and return per-engine status and latency.
 
 ```python
 results = sicry.check_search_engines()
@@ -371,7 +371,7 @@ results = sicry.check_search_engines()
 # ]
 
 live = [r for r in results if r["status"] == "up"]
-print(f"{len(live)}/18 engines alive")
+print(f"{len(live)}/17 engines alive")
 fastest = min(live, key=lambda x: x["latency_ms"])
 print(f"Fastest: {fastest['name']} ({fastest['latency_ms']}ms)")
 ```
@@ -565,13 +565,13 @@ tools = [
         description="Fetch any URL or .onion hidden service via Tor."),
     StructuredTool.from_function(name="sicry_search",
         func=lambda query, max_results=20: sicry.search(query, max_results=max_results),
-        description="Search 18 dark web engines. Returns title/url/engine list."),
+        description="Search 17 dark web engines. Returns title/url/engine list."),
     StructuredTool.from_function(name="sicry_ask",
         func=sicry.ask,
         description="Analyse dark web content. mode: threat_intel|ransomware|personal_identity|corporate"),
     StructuredTool.from_function(name="sicry_check_engines",
         func=sicry.check_search_engines,
-        description="Ping all 18 search engines. Returns status + latency per engine."),
+        description="Ping all 17 search engines. Returns status + latency per engine."),
 ]
 
 agent = initialize_agent(
@@ -598,7 +598,7 @@ sicry_tools = [
         description="Verify Tor is active."),
     StructuredTool.from_function(name="sicry_search",
         func=lambda query: sicry.search(query, max_results=20),
-        description="Search 18 dark web engines."),
+        description="Search 17 dark web engines."),
     StructuredTool.from_function(name="sicry_fetch",
         func=sicry.fetch,
         description="Fetch any .onion URL via Tor."),
@@ -607,7 +607,7 @@ sicry_tools = [
         description="LLM OSINT analysis. mode: threat_intel|ransomware|personal_identity|corporate"),
     StructuredTool.from_function(name="sicry_check_engines",
         func=sicry.check_search_engines,
-        description="Ping all 18 search engines. Returns status + latency."),
+        description="Ping all 17 search engines. Returns status + latency."),
 ]
 
 analyst = Agent(
@@ -715,7 +715,7 @@ print(f"Tor active. Exit IP: {status['exit_ip']}")
 engine_status = sicry.check_search_engines()
 live = [e for e in engine_status if e["status"] == "up"]
 live_names = [e["name"] for e in live]
-print(f"{len(live)}/18 engines alive: {', '.join(live_names[:5])}...")
+print(f"{len(live)}/17 engines alive: {', '.join(live_names[:5])}...")
 
 # Step 3: Refine query (Robin quality pattern)
 raw_query = "ransomware groups targeting hospital systems 2026"
@@ -804,7 +804,7 @@ report = sicry.ask(content, query="acme.com corporate leak", mode="corporate")
 
 ---
 
-## 18 search engines
+## 17 search engines
 
 Robin's full catalogue plus two verified additions. All queried simultaneously by `search()`.
 
@@ -817,7 +817,6 @@ Robin's full catalogue plus two verified additions. All queried simultaneously b
 | **Kaizer** | `.onion` index | |
 | **Anima** | `.onion` index | |
 | **Tornado** | `.onion` index | |
-| **TorNet** | `.onion` index | |
 | **Torland** | `.onion` index | |
 | **FindTor** | `.onion` index | |
 | **Excavator** | `.onion` index | |
@@ -991,7 +990,7 @@ The recommended 7-step pipeline (`pipeline.py` / The full OSINT pipeline section
 [1] check_tor()            → verify Tor is active (abort if not)
      │
      ▼
-[2] check_search_engines() → ping all 18, collect live engine list
+[2] check_search_engines() → ping all 17, collect live engine list
      │
      ▼
 [3] refine_query()         → LLM: natural language → ≤5 search keywords
