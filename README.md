@@ -857,7 +857,9 @@ Copy `.env.example` to `.env`. All variables are optional — configure only wha
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama API base URL |
 | `OLLAMA_MODEL` | `llama3.2` | Ollama model name |
 | `LLAMACPP_BASE_URL` | `http://127.0.0.1:8080` | llama.cpp server base URL |
-| `SICRY_MAX_CHARS` | `8000` | Max characters of content passed to LLM |
+| `SICRY_MAX_CHARS` | `8000` | Max characters of text `fetch()` returns per page |
+| `SICRY_ASK_MAX_CHARS` | `32000` | Max characters of content `ask()` sends the LLM at once |
+| `SICRY_MAX_BYTES` | `10485760` | Largest response body read from one page (10 MB) |
 
 **`TOR_DATA_DIR` is the most important Tor variable.** Set it to Tor's `DataDirectory` path so `renew_identity()` can find the cookie file for authentication.
 
