@@ -7,6 +7,53 @@ Versioning follows [Semantic Versioning](https://semver.org).
 
 ---
 
+## [2.3.2] — 2026-11-12
+
+Fixes from a full audit of the engine; every one has an offline test in OnionClaw's suite
+that fails against 2.3.1.
+
+### Security and privacy
+- **`HTTP_PROXY` / `HTTPS_PROXY` could route traffic around Tor.** requests gives
+  environment proxies priority over `Session.proxies`, so with a proxy variable set every
+  request, onion and clearnet, went to that proxy from the real IP. Tor sessions now ignore
+  the environment.
+- **`check_update()` went to GitHub directly**, outside Tor, announcing itself as
+  `OnionClaw/<version>`, and compared OnionClaw's releases with the engine's version. It now
+  goes through Tor (skipped when Tor is down), checks the repo and version it is given, and
+  returns `up_to_date: None` when it could not check.
+- **`to_csv` wrote onion-operator-controlled titles verbatim**, so a title such as
+  `=HYPERLINK(...)` ran as a formula when the export was opened; such cells are neutralised.
+- **Downloads had no size limit**: a link to a multi-gigabyte archive hung a crawl and
+  exhausted memory. Bodies are capped (`SICRY_MAX_BYTES`) and binary content types skipped.
+
+### Fixed
+- `to_stix` bundles were rejected by the OASIS `stix2` parser (bundle-level `spec_version`).
+- The `sicry_to_stix` / `sicry_to_csv` tool schemas lacked array `items`, so OpenAI and
+  Gemini rejected the whole tool list.
+- `sicry.py serve` died with a TypeError on current `mcp` releases (`description=`).
+- The Anthropic branch read only the first content block, which is a thinking block on
+  current models; refusals came back as empty text. It reads every text block, reports
+  refusals and truncation, and allows 16,000 tokens for thinking.
+- `fetch()` dropped relative links and mangled protocol-relative ones; its cache key
+  lowercased the path; a local DB error during caching counted as a network failure.
+  New `max_chars` / `max_links` arguments let callers read whole pages.
+- `search()` ignored `mode` in its cache key; `_deduplicate_results()` dropped distinct pages
+  of one site sharing a title; `scrape_all()` returned failed pages as their title;
+  `ask()` cut its input at the 8,000-char per-page limit (`SICRY_ASK_MAX_CHARS` now).
+- `watch_check()` reported outages and shrinking result sets as new, and lost alerts when the
+  callback failed.
+- Re-crawling a site emptied earlier crawl jobs' exports (`crawl_pages` is now keyed on
+  job and URL; older databases are migrated); `clear_cache()` deleted `--resume`
+  checkpoints; a bare-filename `SICRY_DB_PATH` crashed.
+- The on-demand Tor circuit pool leaked tor processes, crashed `search()` without `tor`
+  installed, and `pool status` / `stop` launched new pools.
+- BM25 re-scoring ranked scraped pages below unscraped ones; every `http://` Tor error read
+  "is tor running?"; `analyze_nollm` reported hashes as Bitcoin wallets; `crawl()` fetched
+  each fragment as a page and overshot `max_pages`; MISP marked clearnet hosts `to_ids`;
+  `watch disable` accepted unknown ids; a final 5xx raised instead of returning the page.
+
+---
+
 ## [2.3.1] — 2026-10-26
 
 ### Fixed
